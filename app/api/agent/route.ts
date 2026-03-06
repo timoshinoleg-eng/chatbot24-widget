@@ -1,20 +1,22 @@
 /**
  * AI Agent API Route
- * Uses Z.AI GLM-4.7-Flash API or OpenRouter
- * FIXED: Added proper error handling, validation, logging, and CORS
+ * Enhanced with hybrid RAG, persona selection, and debug mode
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { zai, isMockMode } from '@/lib/zai';
 import { checkInputSafety, sanitizeInput } from '@/lib/guardrails';
 import { analyzeSentiment } from '@/lib/sentiment';
-import { searchKnowledgeBase, getSuggestedQuestions } from '@/lib/rag';
+import { hybridSearch, formatRAGContext, getFallbackMessage, getSuggestedQuestions } from '@/lib/rag';
+import { selectPrompt, injectRAGContext, PromptSelectionContext } from '@/lib/prompts';
+import { extractPageContext, detectTone, buildConversationContext } from '@/lib/personalization';
+import { logStep, createRequestContext } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-export const maxDuration = 60; // 60 секунд для Pro-плана Vercel
+export const maxDuration = 60;
 
-// Разрешённые origin для CORS
+// Allowed origins for CORS
 const ALLOWED_ORIGINS = [
   'https://chatbot24-widget.vercel.app',
   'https://www.chatbot24.su',
@@ -36,9 +38,9 @@ function setCorsHeaders(response: NextResponse, origin: string | null) {
   return response;
 }
 
-// Генерация request ID для трассировки
+// Generate request ID for tracing (8 chars)
 function generateRequestId(): string {
-  return `${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 5)}`;
+  return crypto.randomUUID().slice(0, 8);
 }
 
 export async function OPTIONS(request: NextRequest) {
@@ -56,37 +58,13 @@ interface AgentRequest {
     budget?: string;
     timeline?: string;
     pageUrl?: string;
+    pageTitle?: string;
+    widgetMode?: 'faq' | 'sales' | 'support';
+    preferredTone?: 'formal' | 'casual' | 'technical';
   };
 }
 
-const SYSTEM_PROMPT = `Вы — AI-ассистент компании "ВебСтудия Про". Ваша задача — помогать клиентам, отвечать на вопросы о наших услугах и собирать информацию для оформления заявки.
-
-Правила общения:
-1. Будьте вежливы, профессиональны и дружелюбны
-2. Отвечайте на русском языке
-3. Используйте информацию из базы знаний для ответов
-4. Если не знаете ответ — честно скажите об этом
-5. Не раскрывайте технические детали работы системы
-6. Не принимайте решений за клиента — предлагайте варианты
-7. Собирайте информацию постепенно: имя, компания, бюджет, сроки
-
-Услуги компании:
-- Веб-разработка (сайты, веб-приложения)
-- Мобильная разработка (iOS, Android)
-- UI/UX дизайн
-- SEO-оптимизация
-- Контекстная реклама
-- Техническая поддержка
-
-При запросе на коммерческое предложение (КП):
-1. Уточните тип проекта
-2. Соберите контактные данные
-3. Спросите о бюджете и сроках
-4. Предложите сформировать КП
-
-Если клиент недоволен или просит связаться с менеджером — предложите оставить контакты для связи.`;
-
-// Fallback ответы при ошибках API
+// Fallback responses for API errors
 const FALLBACK_RESPONSES = {
   configError: 'Извините, AI-сервис временно недоступен из-за ошибки конфигурации. Мы работаем над исправлением.',
   authError: 'Извините, проблема с доступом к AI-сервису. Пожалуйста, попробуйте позже.',
@@ -100,35 +78,27 @@ export async function POST(request: NextRequest) {
   const origin = request.headers.get('origin');
   const startTime = Date.now();
   
-  // Debug mode
-  const { searchParams } = new URL(request.url);
-  const isDebugMode = searchParams.get('debug') === '1';
+  // Initialize request context for logging
+  const reqContext = createRequestContext(requestId);
   
-  if (isDebugMode) {
-    return setCorsHeaders(
-      NextResponse.json({
-        mode: 'DIAGNOSTIC',
-        requestId,
-        environment: {
-          nodeEnv: process.env.NODE_ENV,
-          vercelEnv: process.env.VERCEL_ENV,
-          hasZaiKey: !!process.env.ZAI_API_KEY,
-          hasOpenRouterKey: !!process.env.OPENROUTER_API_KEY,
-          zaiDiagnostics: zai.getDiagnostics(),
-        },
-        timestamp: new Date().toISOString(),
-      }),
-      origin
-    );
-  }
+  // Parse debug mode
+  const { searchParams } = new URL(request.url);
+  const isDebugMode = searchParams.get('debug') === '1' || searchParams.get('debug') === 'true';
+  const showModel = searchParams.get('show_model') === '1' || process.env.DEBUG_SHOW_MODEL === 'true';
+
+  logStep(reqContext, 'request_start', {
+    method: 'POST',
+    path: '/api/agent',
+    debugMode: isDebugMode,
+  });
 
   try {
-    // Парсинг тела запроса
+    // Parse request body
     let body: AgentRequest;
     try {
       body = await request.json();
     } catch (parseError) {
-      console.error(`[${requestId}] Ошибка парсинга JSON:`, parseError);
+      logStep(reqContext, 'parse_error', { error: String(parseError) });
       const response = NextResponse.json(
         { error: 'Invalid JSON in request body', requestId },
         { status: 400 }
@@ -138,7 +108,13 @@ export async function POST(request: NextRequest) {
     
     const { messages, userId, context } = body;
 
-    // Валидация входных данных
+    logStep(reqContext, 'request_parsed', {
+      messageCount: messages?.length,
+      userId: userId?.slice(0, 8),
+      hasContext: !!context,
+    });
+
+    // Validate input
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       const response = NextResponse.json(
         { error: 'Invalid messages format', requestId },
@@ -147,7 +123,7 @@ export async function POST(request: NextRequest) {
       return setCorsHeaders(response, origin);
     }
 
-    // Get the last user message
+    // Get last user message
     const lastMessage = messages[messages.length - 1];
     if (lastMessage.role !== 'user') {
       const response = NextResponse.json(
@@ -172,7 +148,7 @@ export async function POST(request: NextRequest) {
     // Check safety
     const safetyCheck = checkInputSafety(sanitizedInput, userId);
     if (!safetyCheck.isSafe) {
-      console.warn(`[${requestId}] Запрос заблокирован guardrails:`, safetyCheck.reason);
+      logStep(reqContext, 'input_blocked', { reason: safetyCheck.reason });
       const response = NextResponse.json({
         response: safetyCheck.reason,
         blocked: true,
@@ -184,18 +160,46 @@ export async function POST(request: NextRequest) {
 
     // Analyze sentiment
     const sentiment = analyzeSentiment(sanitizedInput);
+    logStep(reqContext, 'sentiment_analyzed', { 
+      label: sentiment.label, 
+      score: sentiment.score,
+      shouldEscalate: sentiment.shouldEscalate,
+    });
 
-    // Search knowledge base for relevant info
-    const kbResults = searchKnowledgeBase(sanitizedInput, 2);
+    // Hybrid RAG search
+    const ragStartTime = Date.now();
+    const ragResult = await hybridSearch(sanitizedInput, { topK: 5 });
+    const ragDuration = Date.now() - ragStartTime;
+
+    logStep(reqContext, 'rag_complete', {
+      resultCount: ragResult.relevantChunks.length,
+      maxScore: ragResult.maxCombinedScore,
+      fallbackLevel: ragResult.fallbackLevel,
+      duration: ragDuration,
+    });
+
+    // Build context for prompt selection
+    const promptContext: PromptSelectionContext = {
+      widgetMode: context?.widgetMode,
+      detectedTone: context?.preferredTone,
+      isTechnicalQuestion: detectTechnicalQuestion(sanitizedInput),
+      messageCount: messages.length,
+    };
+
+    // Select appropriate prompt
+    const basePrompt = selectPrompt(promptContext);
     
-    // Build knowledge context
-    let knowledgeContext = '';
-    if (kbResults.items.length > 0) {
-      knowledgeContext = '\n\nРелевантная информация из базы знаний:\n' + 
-        kbResults.items.map(item => `Вопрос: ${item.question}\nОтвет: ${item.answer}`).join('\n\n');
-    }
+    // Format RAG context
+    const ragContext = formatRAGContext(ragResult);
+    const fallbackMessage = getFallbackMessage(ragResult.fallbackLevel);
+    
+    // Inject RAG context into prompt
+    const systemPrompt = injectRAGContext(basePrompt, {
+      relevantChunks: ragContext,
+      fallbackMessage,
+    });
 
-    // Build context info
+    // Build user context info
     let contextInfo = '';
     if (context) {
       contextInfo = '\n\nИзвестная информация о клиенте:';
@@ -208,54 +212,83 @@ export async function POST(request: NextRequest) {
 
     // Check if AI is configured
     if (!zai.isConfigured()) {
-      console.error(`[${requestId}] AI провайдеры не сконфигурированы`);
+      logStep(reqContext, 'ai_not_configured', { mockMode: isMockMode });
       const diagnostics = zai.getDiagnostics();
       
       const response = NextResponse.json({
         response: FALLBACK_RESPONSES.configError,
         sentiment,
-        knowledgeUsed: kbResults.items.length > 0,
+        knowledgeUsed: ragResult.relevantChunks.length > 0,
+        fallbackLevel: ragResult.fallbackLevel,
         error: 'AI_SERVICE_NOT_CONFIGURED',
-        diagnostics: process.env.NODE_ENV === 'development' ? diagnostics : undefined,
+        diagnostics: isDebugMode ? diagnostics : undefined,
         requestId,
       });
       return setCorsHeaders(response, origin);
     }
 
-    // MOCK MODE: Если API ключ невалидный, возвращаем тестовый ответ
+    // MOCK MODE
     if (isMockMode) {
-      console.log(`[${requestId}] MOCK MODE: возвращаем тестовый ответ`);
+      logStep(reqContext, 'mock_mode_response');
       
-      // Генерируем простой ответ на основе базы знаний или шаблона
-      let mockResponse = 'Здравствуйте! Я AI-ассистент ВебСтудии Про. ';
+      let mockResponse = 'Здравствуйте! Я AI-ассистент Chatbot24. ';
       
-      if (kbResults.items.length > 0) {
-        mockResponse += kbResults.items[0].answer;
+      if (ragResult.relevantChunks.length > 0 && ragResult.fallbackLevel !== 'full') {
+        mockResponse += ragResult.relevantChunks[0].text;
       } else {
-        mockResponse += 'Чем могу помочь? Я могу рассказать о наших услугах, сроках и стоимости разработки сайтов и приложений.';
+        mockResponse += 'Чем могу помочь? Я могу рассказать о наших услугах, сроках и стоимости разработки чат-ботов и сайтов.';
       }
       
       const duration = Date.now() - startTime;
       
-      const response = NextResponse.json({
+      const responseData: Record<string, unknown> = {
         response: mockResponse,
         sentiment,
-        knowledgeUsed: kbResults.items.length > 0,
+        knowledgeUsed: ragResult.relevantChunks.length > 0,
+        fallbackLevel: ragResult.fallbackLevel,
         suggestedQuestions: getSuggestedQuestions(sanitizedInput),
         provider: 'mock',
         model: 'mock-mode',
         requestId,
         duration,
         mockMode: true,
-      });
+      };
+
+      // Add debug info if requested
+      if (isDebugMode) {
+        responseData._debug = {
+          model: 'mock/mock-mode',
+          provider: 'mock',
+          request_id: requestId,
+          processing_time_ms: duration,
+          tokens: { prompt: 0, completion: 0 },
+          rag: {
+            result_count: ragResult.relevantChunks.length,
+            max_score: ragResult.maxCombinedScore,
+            fallback_level: ragResult.fallbackLevel,
+          },
+        };
+      }
+      
+      const response = NextResponse.json(responseData);
       return setCorsHeaders(response, origin);
     }
 
-    // Call AI API (OpenRouter primary, Z.AI fallback)
+    // Call AI API
+    logStep(reqContext, 'ai_request_start', {
+      messageCount: messages.length,
+      promptLength: systemPrompt.length,
+    });
+
+    const aiStartTime = Date.now();
+    
     try {
       const apiMessages = [
-        { role: 'system' as const, content: SYSTEM_PROMPT + knowledgeContext + contextInfo },
-        ...messages.map(m => ({ role: m.role as 'user' | 'assistant' | 'system', content: m.content }))
+        { role: 'system' as const, content: systemPrompt + contextInfo },
+        ...messages.map(m => ({ 
+          role: m.role as 'user' | 'assistant' | 'system', 
+          content: m.content 
+        }))
       ];
 
       const completion = await zai.createCompletion(apiMessages, {
@@ -264,13 +297,15 @@ export async function POST(request: NextRequest) {
       });
 
       const aiResponse = completion.choices?.[0]?.message?.content || '';
+      const aiDuration = Date.now() - aiStartTime;
 
       if (!aiResponse) {
-        console.warn(`[${requestId}] Пустой ответ от AI API`);
+        logStep(reqContext, 'ai_empty_response');
         const response = NextResponse.json({
           response: 'Извините, не удалось получить ответ. Попробуйте переформулировать вопрос.',
           sentiment,
-          knowledgeUsed: kbResults.items.length > 0,
+          knowledgeUsed: ragResult.relevantChunks.length > 0,
+          fallbackLevel: ragResult.fallbackLevel,
           requestId,
         });
         return setCorsHeaders(response, origin);
@@ -278,31 +313,71 @@ export async function POST(request: NextRequest) {
 
       const duration = Date.now() - startTime;
       
-      // Определяем провайдера и модель
+      // Determine provider and model
       const isFallbackUsed = (completion as unknown as Record<string, unknown>)?._fallbackUsed === true;
-      const provider = isFallbackUsed ? 'zai-fallback' : 'openrouter';
+      const provider = isFallbackUsed ? 'zai' : 'openrouter';
       const model = isFallbackUsed ? 'glm-4.7-flash' : (completion.model || 'qwen/qwen-2.5-14b-instruct');
       
-      console.log(`[${requestId}] Успешный ответ от ${provider} (${model}) за ${duration}ms`);
-
-      const response = NextResponse.json({
-        response: aiResponse,
-        sentiment,
-        knowledgeUsed: kbResults.items.length > 0,
-        suggestedQuestions: getSuggestedQuestions(sanitizedInput),
+      logStep(reqContext, 'ai_response_complete', {
         provider,
         model,
-        requestId,
-        duration,
+        aiDuration,
+        totalDuration: duration,
         fallbackUsed: isFallbackUsed,
       });
+
+      const responseData: Record<string, unknown> = {
+        response: aiResponse,
+        sentiment,
+        knowledgeUsed: ragResult.relevantChunks.length > 0,
+        fallbackLevel: ragResult.fallbackLevel,
+        suggestedQuestions: getSuggestedQuestions(sanitizedInput),
+        provider,
+        model: showModel || isDebugMode ? model : undefined,
+        requestId,
+        duration,
+      };
+
+      // Add debug info if requested
+      if (isDebugMode) {
+        responseData._debug = {
+          model_used: model,
+          provider: provider as 'openrouter' | 'zai',
+          request_id: requestId,
+          processing_time_ms: duration,
+          ai_time_ms: aiDuration,
+          rag_time_ms: ragDuration,
+          tokens: {
+            prompt: completion.usage?.prompt_tokens || 0,
+            completion: completion.usage?.completion_tokens || 0,
+          },
+          fallback_triggered_at: isFallbackUsed ? 'api_request' : undefined,
+          rag: {
+            result_count: ragResult.relevantChunks.length,
+            max_combined_score: ragResult.maxCombinedScore,
+            fallback_level: ragResult.fallbackLevel,
+            semantic_weight: 0.6,
+            keyword_weight: 0.4,
+          },
+          prompt_context: {
+            selected_persona: promptContext.widgetMode || 'consultant',
+            detected_tone: promptContext.detectedTone,
+            message_count: messages.length,
+          },
+        };
+      }
+
+      const response = NextResponse.json(responseData);
       return setCorsHeaders(response, origin);
 
     } catch (apiError) {
-      const duration = Date.now() - startTime;
-      console.error(`[${requestId}] Ошибка AI API (${duration}ms):`, apiError);
+      const aiDuration = Date.now() - aiStartTime;
+      logStep(reqContext, 'ai_error', {
+        duration: aiDuration,
+        error: apiError instanceof Error ? apiError.message : String(apiError),
+      });
       
-      // Определяем тип ошибки для fallback-сообщения
+      // Determine error type for fallback message
       let fallbackMessage = FALLBACK_RESPONSES.generic;
       let errorCode = 'AI_API_ERROR';
       
@@ -321,14 +396,15 @@ export async function POST(request: NextRequest) {
         }
       }
       
+      const duration = Date.now() - startTime;
+      
       const response = NextResponse.json({
         response: fallbackMessage,
         sentiment,
-        knowledgeUsed: kbResults.items.length > 0,
+        knowledgeUsed: ragResult.relevantChunks.length > 0,
+        fallbackLevel: ragResult.fallbackLevel,
         error: errorCode,
-        errorDetails: process.env.NODE_ENV === 'development' && apiError instanceof Error 
-          ? apiError.message 
-          : undefined,
+        errorDetails: isDebugMode && apiError instanceof Error ? apiError.message : undefined,
         requestId,
         duration,
       });
@@ -337,7 +413,10 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     const duration = Date.now() - startTime;
-    console.error(`[${requestId}] Критическая ошибка (${duration}ms):`, error);
+    logStep(reqContext, 'critical_error', {
+      duration,
+      error: error instanceof Error ? error.message : String(error),
+    });
     
     const response = NextResponse.json(
       { 
@@ -349,4 +428,73 @@ export async function POST(request: NextRequest) {
     );
     return setCorsHeaders(response, origin);
   }
+}
+
+/**
+ * Detect if question is technical
+ */
+function detectTechnicalQuestion(text: string): boolean {
+  const technicalKeywords = [
+    'api', 'rest', 'graphql', 'webhook', 'интеграция',
+    'база данных', 'сервер', 'хостинг', 'домен',
+    'react', 'next.js', 'node.js', 'python',
+    'ssl', 'https', 'cdn', 'кэширование',
+    'docker', 'kubernetes', 'ci/cd', 'devops',
+  ];
+  
+  const textLower = text.toLowerCase();
+  return technicalKeywords.some(kw => textLower.includes(kw));
+}
+
+/**
+ * Debug endpoint for diagnostics
+ */
+export async function GET(request: NextRequest) {
+  const requestId = generateRequestId();
+  const origin = request.headers.get('origin');
+  
+  const { searchParams } = new URL(request.url);
+  const isDebugMode = searchParams.get('debug') === '1';
+
+  if (!isDebugMode) {
+    const response = NextResponse.json({
+      status: 'ok',
+      requestId,
+      timestamp: new Date().toISOString(),
+    });
+    return setCorsHeaders(response, origin);
+  }
+
+  // Debug diagnostics
+  const diagnostics = {
+    mode: 'DIAGNOSTIC',
+    requestId,
+    environment: {
+      nodeEnv: process.env.NODE_ENV,
+      vercelEnv: process.env.VERCEL_ENV,
+    },
+    ai_providers: {
+      hasOpenRouterKey: !!process.env.OPENROUTER_API_KEY,
+      hasZaiKey: !!process.env.ZAI_API_KEY,
+      zaiDiagnostics: zai.getDiagnostics(),
+      isConfigured: zai.isConfigured(),
+      isMockMode,
+    },
+    rag: {
+      semanticWeight: 0.6,
+      keywordWeight: 0.4,
+      topK: 5,
+      rerankThreshold: 0.5,
+    },
+    features: {
+      hybridRag: true,
+      aiScoring: true,
+      personaSelection: true,
+      debugMode: true,
+    },
+    timestamp: new Date().toISOString(),
+  };
+
+  const response = NextResponse.json(diagnostics);
+  return setCorsHeaders(response, origin);
 }

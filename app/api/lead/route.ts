@@ -1,12 +1,15 @@
 /**
  * Lead API Route
- * Creates leads in Bitrix24 with scoring and sentiment analysis
+ * Creates leads in Bitrix24 with AI scoring and automated workflows
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { scoreLead } from '@/lib/scoring';
+import { scoreLeadWithAI, formatScoreForBitrix, isHotLead } from '@/lib/scoring';
 import { analyzeSentiment } from '@/lib/sentiment';
-import { Bitrix24Client } from '@/lib/bitrix24';
+import { getBitrix24ExtendedClient, ExtendedLeadData } from '@/lib/bitrix24-ext';
+import { getBitrix24TasksClient } from '@/lib/bitrix24-tasks';
+import { getBitrix24TriggersClient } from '@/lib/bitrix24-triggers';
+import { logStep, createRequestContext } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,10 +22,14 @@ interface LeadRequest {
   timeline?: string;
   message?: string;
   source?: string;
+  pageUrl?: string;
+  conversationHistory?: Array<{ role: string; content: string }>;
+  utmSource?: string;
+  utmMedium?: string;
+  utmCampaign?: string;
 }
 
 function validatePhone(phone: string): boolean {
-  // Basic Russian phone validation
   const cleaned = phone.replace(/[\s\-\(\)]/g, '');
   const phoneRegex = /^(\+7|7|8)?[\s\-]?\(?[489][0-9]{2}\)?[\s\-]?[0-9]{3}[\s\-]?[0-9]{2}[\s\-]?[0-9]{2}$/;
   return phoneRegex.test(cleaned);
@@ -33,22 +40,30 @@ function validateEmail(email: string): boolean {
   return emailRegex.test(email);
 }
 
+function generateRequestId(): string {
+  return crypto.randomUUID().slice(0, 8);
+}
+
 export async function POST(request: NextRequest) {
-  console.log('[Lead API] Received POST request');
+  const requestId = generateRequestId();
+  const reqContext = createRequestContext(requestId);
+  
+  logStep(reqContext, 'lead_api_start', { method: 'POST' });
   
   try {
     const body: LeadRequest = await request.json();
-    const { name, company, phone, email, budget, timeline, message, source } = body;
+    const { 
+      name, company, phone, email, budget, timeline, 
+      message, source, pageUrl, conversationHistory,
+      utmSource, utmMedium, utmCampaign
+    } = body;
 
-    console.log('[Lead API] Request body:', { 
-      name, 
-      company, 
-      phone: phone ? '***' : undefined, 
-      email: email ? '***' : undefined,
-      budget: budget || 'не указан',
-      timeline: timeline || 'не указаны',
-      hasMessage: !!message,
-      source: source || 'chat_widget'
+    logStep(reqContext, 'lead_data_received', {
+      name,
+      company,
+      hasPhone: !!phone,
+      hasEmail: !!email,
+      hasConversationHistory: !!conversationHistory?.length,
     });
 
     // Validation
@@ -70,133 +85,246 @@ export async function POST(request: NextRequest) {
       errors.email = 'Введите корректный email';
     }
 
-    // budget и timeline теперь необязательные поля
-    // Если не указаны, используем значения по умолчанию
-
     if (Object.keys(errors).length > 0) {
-      console.log('[Lead API] Validation failed:', errors);
+      logStep(reqContext, 'lead_validation_failed', { errors });
       return NextResponse.json(
         { error: 'Validation failed', errors },
         { status: 400 }
       );
     }
 
-    // Calculate lead score
-    const leadScore = scoreLead(budget || 'не указан', timeline || 'не указаны');
-    console.log('[Lead API] Lead score calculated:', leadScore);
+    // AI Scoring
+    let aiScore = null;
+    if (conversationHistory && conversationHistory.length > 0) {
+      logStep(reqContext, 'ai_scoring_start');
+      
+      try {
+        aiScore = await scoreLeadWithAI({
+          messages: conversationHistory,
+        });
+        
+        logStep(reqContext, 'ai_scoring_complete', {
+          status: aiScore.status,
+          confidence: aiScore.confidence,
+          projectType: aiScore.extractedData.projectType,
+        });
+      } catch (scoringError) {
+        logStep(reqContext, 'ai_scoring_error', {
+          error: scoringError instanceof Error ? scoringError.message : String(scoringError),
+        });
+        // Continue without AI scoring
+      }
+    }
+
+    // Fallback to heuristic scoring if AI failed
+    if (!aiScore) {
+      const { scoreLead } = await import('@/lib/scoring');
+      const legacyScore = scoreLead(budget || 'не указан', timeline || 'не указаны');
+      
+      // Convert legacy score to new format
+      aiScore = {
+        status: legacyScore.status,
+        confidence: 0.5,
+        justification: 'Оценка на основе базовых правил',
+        extractedData: {
+          budget: budget ? { value: parseInt(budget.replace(/\D/g, '')) || 0, currency: 'RUB', confidence: 0.5 } : null,
+          timeline: null,
+          projectType: 'не ясно',
+          decisionMaker: null,
+          previousExperience: 'none',
+          contacts: { name, phone, email, company },
+        },
+        recommendedAction: {
+          priority: legacyScore.status === 'HOT' ? 2 : legacyScore.status === 'WARM' ? 5 : 8,
+          timeframe: legacyScore.status === 'HOT' ? 'в течение часа' : legacyScore.status === 'WARM' ? 'сегодня' : 'неделя',
+          channel: legacyScore.status === 'HOT' ? 'звонок' : 'мессенджер',
+          assignedTo: 'sales-manager',
+        },
+        redFlags: [],
+      };
+    }
 
     // Analyze sentiment if message provided
     let sentiment = null;
     if (message) {
       sentiment = analyzeSentiment(message);
-      console.log('[Lead API] Sentiment analyzed:', sentiment);
+      logStep(reqContext, 'sentiment_analyzed', {
+        label: sentiment.label,
+        score: sentiment.score,
+      });
     }
 
+    // Build conversation summary
+    const conversationSummary = conversationHistory
+      ? conversationHistory.map(m => `${m.role === 'user' ? 'Клиент' : 'Бот'}: ${m.content}`).join('\n')
+      : message || '';
+
+    // Create extended lead data
+    const leadData: ExtendedLeadData = {
+      name: name.trim(),
+      company: company.trim(),
+      phone: phone.trim(),
+      email: email.trim(),
+      aiScore,
+      conversationSummary: conversationSummary.substring(0, 2000),
+      source: source || 'chat_widget',
+      utmSource,
+      utmMedium,
+      utmCampaign,
+      pageUrl,
+      estimatedValue: aiScore.extractedData.budget?.value,
+      estimatedTimeline: aiScore.extractedData.timeline 
+        ? `${aiScore.extractedData.timeline.minWeeks}-${aiScore.extractedData.timeline.maxWeeks} недель`
+        : undefined,
+      projectType: aiScore.extractedData.projectType,
+    };
+
     // Create lead in Bitrix24
-    console.log('[Lead API] Creating lead in Bitrix24...');
-    const bitrixClient = new Bitrix24Client();
+    logStep(reqContext, 'bitrix24_lead_create_start');
     
+    const bitrixClient = getBitrix24ExtendedClient();
     let leadResult;
+    
     try {
-      leadResult = await bitrixClient.createLead({
-        name: name.trim(),
-        company: company.trim(),
-        phone: phone.trim(),
-        email: email.trim(),
-        budget: budget || 'не указан',
-        timeline: timeline || 'не указаны',
-        score: leadScore.score,
-        status: leadScore.status,
-        source: source || 'chat_widget',
-        comments: message || ''
+      leadResult = await bitrixClient.createExtendedLead(leadData);
+      
+      if (!leadResult.success) {
+        throw new Error(leadResult.error || 'Unknown Bitrix24 error');
+      }
+      
+      logStep(reqContext, 'bitrix24_lead_created', {
+        leadId: leadResult.leadId,
       });
-      console.log('[Lead API] Bitrix24 lead created:', leadResult);
     } catch (bitrixError) {
-      console.error('[Lead API] Bitrix24 error:', bitrixError);
-      // Return error but don't fail the request completely
-      // The lead data is still valuable even if Bitrix24 fails
+      logStep(reqContext, 'bitrix24_lead_error', {
+        error: bitrixError instanceof Error ? bitrixError.message : String(bitrixError),
+      });
+      
       return NextResponse.json({
         success: false,
         error: 'Failed to create lead in CRM',
         details: bitrixError instanceof Error ? bitrixError.message : 'Unknown error',
-        score: leadScore,
+        score: aiScore,
         sentiment,
       }, { status: 502 });
     }
 
-    // If sentiment is negative, create escalation
-    if (sentiment?.shouldEscalate && leadResult.leadId) {
-      console.log('[Lead API] Creating escalation activity for negative sentiment');
+    // Create tasks for HOT leads
+    if (leadResult.leadId && isHotLead(aiScore)) {
+      logStep(reqContext, 'hot_lead_task_create_start');
+      
+      const tasksClient = getBitrix24TasksClient();
+      
       try {
-        await bitrixClient.createActivity({
-          leadId: leadResult.leadId,
-          subject: '🔥 СРОЧНО: Негативный клиент',
-          priority: 'HIGH',
-          description: `Клиент выразил негативное отношение (score: ${sentiment.score.toFixed(2)}). Сообщение: ${message}`
-        });
-
-        await bitrixClient.notifyManager(
-          `⚠️ Эскалация: клиент ${name} недоволен (score: ${sentiment.score.toFixed(2)}). Лид #${leadResult.leadId}`
+        await tasksClient.createHotLeadTask(
+          leadResult.leadId,
+          name,
+          aiScore,
+          { phone, email }
         );
-      } catch (escalationError) {
-        console.error('[Lead API] Escalation error:', escalationError);
+        
+        logStep(reqContext, 'hot_lead_task_created');
+      } catch (taskError) {
+        logStep(reqContext, 'hot_lead_task_error', {
+          error: taskError instanceof Error ? taskError.message : String(taskError),
+        });
         // Non-critical error, continue
       }
     }
 
-    // Log the lead creation
-    console.log('[Lead API] Lead created successfully:', {
-      name,
-      company,
-      score: leadScore.score,
-      status: leadScore.status,
-      sentiment: sentiment?.label,
-      bitrixId: leadResult.leadId
+    // Send notifications and trigger workflows
+    if (leadResult.leadId) {
+      logStep(reqContext, 'triggers_start');
+      
+      const triggersClient = getBitrix24TriggersClient();
+      
+      try {
+        const triggerResult = await triggersClient.checkTriggers(leadResult.leadId, {
+          name,
+          score: aiScore,
+          email,
+          phone,
+        });
+        
+        logStep(reqContext, 'triggers_complete', {
+          executed: triggerResult.executed,
+          errors: triggerResult.errors,
+        });
+      } catch (triggerError) {
+        logStep(reqContext, 'triggers_error', {
+          error: triggerError instanceof Error ? triggerError.message : String(triggerError),
+        });
+        // Non-critical error, continue
+      }
+    }
+
+    // Handle negative sentiment
+    if (sentiment?.shouldEscalate && leadResult.leadId) {
+      logStep(reqContext, 'negative_sentiment_escalation');
+      
+      const tasksClient = getBitrix24TasksClient();
+      
+      try {
+        await tasksClient.createNegativeSentimentTask(
+          leadResult.leadId,
+          name,
+          sentiment.score,
+          conversationSummary.substring(0, 500)
+        );
+      } catch (escalationError) {
+        logStep(reqContext, 'escalation_error', {
+          error: escalationError instanceof Error ? escalationError.message : String(escalationError),
+        });
+      }
+    }
+
+    logStep(reqContext, 'lead_api_complete', {
+      leadId: leadResult.leadId,
+      status: aiScore.status,
     });
 
     return NextResponse.json({
       success: true,
       leadId: leadResult.leadId,
-      score: leadScore,
+      score: aiScore,
       sentiment,
-      message: 'Заявка успешно создана'
+      message: 'Заявка успешно создана',
     });
 
   } catch (error) {
-    console.error('[Lead API] Error:', error);
+    logStep(reqContext, 'lead_api_error', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    
     return NextResponse.json(
-      { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Internal server error', requestId },
       { status: 500 }
     );
   }
 }
 
 export async function GET(request: NextRequest) {
-  console.log('[Lead API] Received GET request');
+  const requestId = generateRequestId();
   
   try {
-    const bitrixClient = new Bitrix24Client();
-    const result = await bitrixClient.getLeadList();
+    const bitrixClient = getBitrix24ExtendedClient();
+    const result = await bitrixClient.findLead({});
 
     if (!result.success) {
-      console.error('[Lead API] Failed to get leads:', result.error);
       return NextResponse.json(
         { error: result.error },
         { status: 500 }
       );
     }
 
-    console.log('[Lead API] Retrieved leads count:', result.leads?.length || 0);
-
     return NextResponse.json({
       leads: result.leads,
-      total: result.leads?.length || 0
+      total: result.leads?.length || 0,
     });
 
   } catch (error) {
-    console.error('[Lead API] GET error:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Internal server error', requestId },
       { status: 500 }
     );
   }
