@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kimi Agent 2.5 - AI Chat Widget</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="bg-gradient-to-br from-slate-50 to-blue-50 min-h-screen">
+    <!-- Hero Section -->
+    <section class="relative overflow-hidden px-4 py-20">
+        <div class="mx-auto max-w-7xl text-center">
+            <div class="mb-6 inline-flex items-center gap-2 rounded-full bg-blue-100 px-4 py-2 text-sm font-medium text-blue-700">
+                <i class="fas fa-sparkles"></i>
+                Kimi Agent 2.5 — AI Chat Widget
+            </div>
+            <h1 class="mb-6 text-4xl font-bold tracking-tight text-gray-900 sm:text-6xl">
+                Умный чат-виджет
+                <br>
+                <span class="bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+                    для вашего бизнеса
+                </span>
+            </h1>
+            <p class="mx-auto mb-10 max-w-2xl text-lg text-gray-600">
+                AI-ассистент со скорингом лидов, анализом тональности, 
+                генерацией PDF коммерческих предложений и интеграцией с Bitrix24
+            </p>
+            <div class="flex flex-col items-center justify-center gap-4 sm:flex-row">
+                <a href="#features" class="inline-flex items-center gap-2 rounded-full bg-blue-600 px-8 py-4 text-lg font-semibold text-white hover:bg-blue-700">
+                    <i class="fas fa-bolt"></i>
+                    Узнать больше
+                </a>
+                <a href="/admin" class="inline-flex items-center gap-2 rounded-full bg-white px-8 py-4 text-lg font-semibold text-gray-700 shadow-sm hover:bg-gray-50">
+                    <i class="fas fa-chart-bar"></i>
+                    Дашборд
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Stats Section -->
+    <section class="border-y border-gray-100 bg-white/50">
+        <div class="mx-auto max-w-7xl px-4 py-12">
+            <div class="grid grid-cols-2 gap-8 md:grid-cols-4 text-center">
+                <div>
+                    <div class="text-3xl font-bold text-gray-900">500+</div>
+                    <div class="mt-1 text-sm text-gray-600">Проектов</div>
+                </div>
+                <div>
+                    <div class="text-3xl font-bold text-gray-900">98%</div>
+                    <div class="mt-1 text-sm text-gray-600">Довольных клиентов</div>
+                </div>
+                <div>
+                    <div class="text-3xl font-bold text-gray-900">24/7</div>
+                    <div class="mt-1 text-sm text-gray-600">Поддержка</div>
+                </div>
+                <div>
+                    <div class="text-3xl font-bold text-gray-900">&lt;2ч</div>
+                    <div class="mt-1 text-sm text-gray-600">Ответ</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section id="features" class="px-4 py-20">
+        <div class="mx-auto max-w-7xl">
+            <div class="mb-16 text-center">
+                <h2 class="mb-4 text-3xl font-bold text-gray-900">Возможности</h2>
+                <p class="mx-auto max-w-2xl text-gray-600">
+                    Полный набор инструментов для автоматизации коммуникации с клиентами
+                </p>
+            </div>
+            <div class="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
+                <div class="group rounded-2xl bg-white p-8 shadow-sm hover:shadow-lg transition-all">
+                    <div class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-blue-100 group-hover:bg-blue-600 transition-colors">
+                        <i class="fas fa-robot text-xl text-blue-600 group-hover:text-white"></i>
+                    </div>
+                    <h3 class="mb-2 text-xl font-semibold">AI-Ассистент</h3>
+                    <p class="text-gray-600">Умный чат-бот на базе Claude 3.5 Sonnet с пониманием контекста</p>
+                </div>
+                <div class="group rounded-2xl bg-white p-8 shadow-sm hover:shadow-lg transition-all">
+                    <div class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-blue-100 group-hover:bg-blue-600 transition-colors">
+                        <i class="fas fa-chart-line text-xl text-blue-600 group-hover:text-white"></i>
+                    </div>
+                    <h3 class="mb-2 text-xl font-semibold">Скоринг Лидов</h3>
+                    <p class="text-gray-600">Автоматическая классификация HOT/WARM/COLD на основе бюджета и сроков</p>
+                </div>
+                <div class="group rounded-2xl bg-white p-8 shadow-sm hover:shadow-lg transition-all">
+                    <div class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-blue-100 group-hover:bg-blue-600 transition-colors">
+                        <i class="fas fa-comments text-xl text-blue-600 group-hover:text-white"></i>
+                    </div>
+                    <h3 class="mb-2 text-xl font-semibold">Анализ Тональности</h3>
+                    <p class="text-gray-600">Обнаружение негативных сообщений и автоматическая эскалация</p>
+                </div>
+                <div class="group rounded-2xl bg-white p-8 shadow-sm hover:shadow-lg transition-all">
+                    <div class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-blue-100 group-hover:bg-blue-600 transition-colors">
+                        <i class="fas fa-file-pdf text-xl text-blue-600 group-hover:text-white"></i>
+                    </div>
+                    <h3 class="mb-2 text-xl font-semibold">Генерация PDF КП</h3>
+                    <p class="text-gray-600">Мгновенное создание коммерческих предложений с выбранными услугами</p>
+                </div>
+                <div class="group rounded-2xl bg-white p-8 shadow-sm hover:shadow-lg transition-all">
+                    <div class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-blue-100 group-hover:bg-blue-600 transition-colors">
+                        <i class="fas fa-shield-alt text-xl text-blue-600 group-hover:text-white"></i>
+                    </div>
+                    <h3 class="mb-2 text-xl font-semibold">Guardrails</h3>
+                    <p class="text-gray-600">Защита от злоупотреблений, спама и нежелательного контента</p>
+                </div>
+                <div class="group rounded-2xl bg-white p-8 shadow-sm hover:shadow-lg transition-all">
+                    <div class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-blue-100 group-hover:bg-blue-600 transition-colors">
+                        <i class="fas fa-chart-pie text-xl text-blue-600 group-hover:text-white"></i>
+                    </div>
+                    <h3 class="mb-2 text-xl font-semibold">Аналитика</h3>
+                    <p class="text-gray-600">Детальная статистика в админ-панели с графиками и метриками</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Chat Widget -->
+    <div id="chat-widget" class="fixed bottom-6 right-6 z-50">
+        <button id="chat-toggle" class="flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 shadow-lg hover:scale-110 transition-all">
+            <i class="fas fa-comment text-white text-xl"></i>
+        </button>
+        <div id="chat-window" class="hidden absolute bottom-20 right-0 w-[400px] h-[600px] bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden">
+            <div class="flex items-center justify-between bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-3">
+                <div class="flex items-center gap-3">
+                    <div class="flex h-10 w-10 items-center justify-center rounded-full bg-white/20">
+                        <i class="fas fa-robot text-white"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-semibold text-white">Kimi Agent 2.5</h3>
+                        <p class="text-xs text-blue-100">AI-ассистент</p>
+                    </div>
+                </div>
+                <button id="chat-close" class="text-white/80 hover:text-white">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div id="chat-messages" class="flex-1 overflow-y-auto p-4 h-[calc(100%-140px)] space-y-4">
+                <div class="flex gap-3">
+                    <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-indigo-600">
+                        <i class="fas fa-robot text-white text-sm"></i>
+                    </div>
+                    <div class="max-w-[75%] rounded-2xl bg-gray-100 px-4 py-2 text-sm text-gray-800">
+                        Привет! 👋 Я AI-ассистент ВебСтудии Про. Чем могу помочь?
+                    </div>
+                </div>
+            </div>
+            <div class="border-t border-gray-100 bg-white p-4">
+                <div class="flex gap-2">
+                    <input type="text" id="chat-input" placeholder="Введите сообщение..." class="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <button id="chat-send" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="border-t border-gray-200 bg-white px-4 py-12">
+        <div class="mx-auto max-w-7xl">
+            <div class="flex flex-col items-center justify-between gap-4 md:flex-row">
+                <div class="flex items-center gap-3">
+                    <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-blue-600 to-indigo-600">
+                        <i class="fas fa-robot text-white"></i>
+                    </div>
+                    <div>
+                        <p class="font-semibold text-gray-900">Kimi Agent 2.5</p>
+                        <p class="text-sm text-gray-500">AI Chat Widget</p>
+                    </div>
+                </div>
+                <p class="text-sm text-gray-500">© 2026 ВебСтудия Про. Все права защищены.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // Chat Widget Logic
+        const chatToggle = document.getElementById('chat-toggle');
+        const chatWindow = document.getElementById('chat-window');
+        const chatClose = document.getElementById('chat-close');
+        const chatInput = document.getElementById('chat-input');
+        const chatSend = document.getElementById('chat-send');
+        const chatMessages = document.getElementById('chat-messages');
+
+        let isOpen = false;
+
+        chatToggle.addEventListener('click', () => {
+            isOpen = !isOpen;
+            chatWindow.classList.toggle('hidden', !isOpen);
+        });
+
+        chatClose.addEventListener('click', () => {
+            isOpen = false;
+            chatWindow.classList.add('hidden');
+        });
+
+        function addMessage(text, isUser = false) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `flex gap-3 ${isUser ? 'flex-row-reverse' : ''}`;
+            messageDiv.innerHTML = `
+                <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${isUser ? 'bg-blue-100' : 'bg-gradient-to-br from-blue-500 to-indigo-600'}">
+                    <i class="${isUser ? 'fas fa-user text-blue-600' : 'fas fa-robot text-white'} text-sm"></i>
+                </div>
+                <div class="max-w-[75%] rounded-2xl px-4 py-2 text-sm ${isUser ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-800'}">
+                    ${text}
+                </div>
+            `;
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function getBotResponse(input) {
+            const lower = input.toLowerCase();
+            if (lower.includes('цена') || lower.includes('стоимость') || lower.includes('сколько')) {
+                return 'Наши цены зависят от сложности проекта. Лендинг — от 50 000₽, корпоративный сайт — от 150 000₽, интернет-магазин — от 250 000₽. Хотите, чтобы я подготовил для вас детальное коммерческое предложение?';
+            }
+            if (lower.includes('срок') || lower.includes('время')) {
+                return 'Сроки зависят от объёма работ. Простой лендинг — 1-2 недели, корпоративный сайт — 3-6 недель, сложный проект — 2-4 месяца. Какой у вас дедлайн?';
+            }
+            if (lower.includes('услуг') || lower.includes('что делаете')) {
+                return 'Мы предлагаем полный спектр услуг: веб-разработка, мобильные приложения, UI/UX дизайн, SEO-оптимизация, контекстная реклама и техническая поддержка. Какое направление вас интересует?';
+            }
+            return 'Спасибо за ваш вопрос! Чтобы я мог лучше помочь, расскажите немного о вашем проекте: что именно вам нужно разработать, какой бюджет и сроки?';
+        }
+
+        function sendMessage() {
+            const text = chatInput.value.trim();
+            if (!text) return;
+            
+            addMessage(text, true);
+            chatInput.value = '';
+            
+            setTimeout(() => {
+                addMessage(getBotResponse(text));
+            }, 500);
+        }
+
+        chatSend.addEventListener('click', sendMessage);
+        chatInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendMessage();
+        });
+    </script>
+</body>
+</html>

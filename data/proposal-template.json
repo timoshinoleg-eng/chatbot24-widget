@@ -1,0 +1,60 @@
+{
+  "companyInfo": {
+    "name": "ООО \"ВебСтудия Про\"",
+    "address": "г. Москва, ул. Примерная, д. 123",
+    "phone": "+7 (999) 123-45-67",
+    "email": "info@webstudio.pro",
+    "website": "www.webstudio.pro",
+    "inn": "7701234567",
+    "kpp": "770101001"
+  },
+  "proposal": {
+    "title": "КОММЕРЧЕСКОЕ ПРЕДЛОЖЕНИЕ",
+    "subtitle": "на разработку программного продукта",
+    "validityDays": 30,
+    "sections": [
+      {
+        "id": "client",
+        "title": "1. Информация о клиенте",
+        "fields": [
+          { "name": "clientName", "label": "Контактное лицо", "type": "text", "required": true },
+          { "name": "company", "label": "Компания", "type": "text", "required": true },
+          { "name": "email", "label": "Email", "type": "email", "required": true },
+          { "name": "phone", "label": "Телефон", "type": "tel", "required": true }
+        ]
+      },
+      {
+        "id": "project",
+        "title": "2. Описание проекта",
+        "fields": [
+          { "name": "projectType", "label": "Тип проекта", "type": "select", "options": ["Лендинг", "Корпоративный сайт", "Интернет-магазин", "Веб-приложение", "Мобильное приложение"], "required": true },
+          { "name": "budget", "label": "Бюджет", "type": "select", "options": ["до 50 000₽", "50 000₽ - 100 000₽", "100 000₽ - 250 000₽", "250 000₽+"], "required": true },
+          { "name": "timeline", "label": "Сроки", "type": "select", "options": ["Срочно", "1 неделя", "1 месяц", "Не определено"], "required": true },
+          { "name": "description", "label": "Описание требований", "type": "textarea", "required": false }
+        ]
+      },
+      {
+        "id": "services",
+        "title": "3. Выбранные услуги",
+        "type": "checkbox",
+        "options": [
+          { "id": "web", "name": "Веб-разработка", "price": 150000 },
+          { "id": "mobile", "name": "Мобильное приложение", "price": 200000 },
+          { "id": "design", "name": "Дизайн UI/UX", "price": 80000 },
+          { "id": "seo", "name": "SEO-оптимизация", "price": 50000 },
+          { "id": "ads", "name": "Контекстная реклама", "price": 40000 },
+          { "id": "support", "name": "Техническая поддержка", "price": 30000 },
+          { "id": "consult", "name": "Консультация", "price": 15000 }
+        ]
+      }
+    ],
+    "terms": [
+      "Предоплата 50% перед началом работ",
+      "Оставшиеся 50% после сдачи проекта",
+      "Гарантия 12 месяцев на все работы",
+      "Бесплатные правки в рамках ТЗ",
+      "Поддержка и сопровождение"
+    ],
+    "notes": "Данное предложение действительно в течение 30 дней с момента выдачи. Стоимость может быть скорректирована после детального обсуждения проекта."
+  }
+}
