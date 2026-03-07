@@ -9,7 +9,7 @@ import { Bitrix24Client } from '@/lib/bitrix24';
 export const dynamic = 'force-dynamic';
 
 // In-memory analytics store (use database in production)
-interface ChatSession {
+export interface ChatSession {
   id: string;
   startTime: number;
   endTime?: number;
@@ -17,9 +17,13 @@ interface ChatSession {
   convertedToLead: boolean;
   sentiment: string;
   score?: number;
+  userId?: string;
+  pageUrl?: string;
+  source?: string;
 }
 
-const chatSessions: ChatSession[] = [];
+// Shared in-memory store - exported for use in other routes
+export const chatSessions: ChatSession[] = [];
 
 export async function POST(request: NextRequest) {
   try {
@@ -33,7 +37,10 @@ export async function POST(request: NextRequest) {
         startTime: Date.now(),
         messages: 0,
         convertedToLead: false,
-        sentiment: 'NEUTRAL'
+        sentiment: 'NEUTRAL',
+        userId: data.userId,
+        pageUrl: data.pageUrl,
+        source: data.source,
       });
     } else if (event === 'chat_message') {
       const session = chatSessions.find(s => s.id === data.sessionId);

@@ -4,6 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { chatSessions } from '../route';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,6 +29,61 @@ interface ConversationRecord {
   duration: number;
   pageUrl?: string;
   source?: string;
+}
+
+/**
+ * Convert ChatSession to ConversationRecord format
+ */
+function convertSessionToRecord(session: typeof chatSessions[0]): ConversationRecord {
+  // Determine lead score category from numeric score
+  let leadScore: string | undefined;
+  if (session.score !== undefined) {
+    if (session.score >= 70) leadScore = 'HOT';
+    else if (session.score >= 40) leadScore = 'WARM';
+    else leadScore = 'COLD';
+  }
+
+  // Calculate duration (if endTime exists, use it; otherwise estimate 30 sec per message)
+  const duration = session.endTime 
+    ? Math.round((session.endTime - session.startTime) / 1000)
+    : session.messages * 30;
+
+  return {
+    id: session.id,
+    timestamp: new Date(session.startTime).toISOString(),
+    userId: session.userId || 'anonymous',
+    sessionId: session.id,
+    messageCount: session.messages,
+    leadCaptured: session.convertedToLead,
+    leadScore,
+    sentiment: session.sentiment,
+    duration,
+    pageUrl: session.pageUrl,
+    source: session.source || 'direct',
+  };
+}
+
+/**
+ * Fetch analytics data from shared in-memory store
+ */
+async function fetchAnalyticsData(
+  dateFrom?: string,
+  dateTo?: string
+): Promise<ConversationRecord[]> {
+  // Convert all sessions to records
+  let records = chatSessions.map(convertSessionToRecord);
+
+  // Filter by date if provided
+  if (dateFrom || dateTo) {
+    records = records.filter(record => {
+      const recordDate = new Date(record.timestamp);
+      if (dateFrom && recordDate < new Date(dateFrom)) return false;
+      if (dateTo && recordDate > new Date(dateTo)) return false;
+      return true;
+    });
+  }
+
+  return records;
 }
 
 /**
@@ -136,57 +192,6 @@ function generateXLSXHTML(data: ConversationRecord[]): string {
   `;
 }
 
-/**
- * Fetch analytics data
- * In production, query from database
- */
-async function fetchAnalyticsData(
-  dateFrom?: string,
-  dateTo?: string
-): Promise<ConversationRecord[]> {
-  // Mock data for demonstration
-  // In production, query from your analytics database
-  const mockData: ConversationRecord[] = [
-    {
-      id: 'conv_001',
-      timestamp: new Date().toISOString(),
-      userId: 'user_001',
-      sessionId: 'session_001',
-      messageCount: 12,
-      leadCaptured: true,
-      leadScore: 'HOT',
-      sentiment: 'POSITIVE',
-      duration: 180,
-      pageUrl: 'https://chatbot24.su/services/chatbots',
-      source: 'organic',
-    },
-    {
-      id: 'conv_002',
-      timestamp: new Date(Date.now() - 86400000).toISOString(),
-      userId: 'user_002',
-      sessionId: 'session_002',
-      messageCount: 5,
-      leadCaptured: false,
-      sentiment: 'NEUTRAL',
-      duration: 60,
-      pageUrl: 'https://chatbot24.su/pricing',
-      source: 'adwords',
-    },
-  ];
-
-  // Filter by date if provided
-  if (dateFrom || dateTo) {
-    return mockData.filter(record => {
-      const recordDate = new Date(record.timestamp);
-      if (dateFrom && recordDate < new Date(dateFrom)) return false;
-      if (dateTo && recordDate > new Date(dateTo)) return false;
-      return true;
-    });
-  }
-
-  return mockData;
-}
-
 export async function POST(request: NextRequest) {
   try {
     const body: ExportRequest = await request.json();
@@ -199,7 +204,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Fetch data
+    // Fetch data from shared in-memory store
     const data = await fetchAnalyticsData(dateFrom, dateTo);
 
     // Generate content based on format
@@ -260,6 +265,7 @@ export async function GET(request: NextRequest) {
         format,
         dateFrom,
         dateTo,
+        source: 'in-memory-store',
       },
     });
 
