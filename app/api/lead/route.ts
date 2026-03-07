@@ -4,7 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { scoreLeadWithAI, formatScoreForBitrix, isHotLead, ConversationMessage } from '@/lib/scoring';
+import { scoreLeadWithAI, formatScoreForBitrix, isHotLead, ConversationMessage, LeadScore } from '@/lib/scoring';
 import { analyzeSentiment } from '@/lib/sentiment';
 import { getBitrix24ExtendedClient, ExtendedLeadData } from '@/lib/bitrix24-ext';
 import { getBitrix24TasksClient } from '@/lib/bitrix24-tasks';
@@ -94,7 +94,7 @@ export async function POST(request: NextRequest) {
     }
 
     // AI Scoring
-    let aiScore = null;
+    let aiScore: LeadScore | null = null;
     if (conversationHistory && conversationHistory.length > 0) {
       logStep(reqContext, 'ai_scoring_start');
       
@@ -129,16 +129,16 @@ export async function POST(request: NextRequest) {
         extractedData: {
           budget: budget ? { value: parseInt(budget.replace(/\D/g, '')) || 0, currency: 'RUB', confidence: 0.5 } : null,
           timeline: null,
-          projectType: 'не ясно',
+          projectType: 'не ясно' as const,
           decisionMaker: null,
-          previousExperience: 'none',
+          previousExperience: 'none' as const,
           contacts: { name, phone, email, company },
         },
         recommendedAction: {
-          priority: legacyScore.status === 'HOT' ? 2 : legacyScore.status === 'WARM' ? 5 : 8,
-          timeframe: legacyScore.status === 'HOT' ? 'в течение часа' : legacyScore.status === 'WARM' ? 'сегодня' : 'неделя',
-          channel: legacyScore.status === 'HOT' ? 'звонок' : 'мессенджер',
-          assignedTo: 'sales-manager',
+          priority: (legacyScore.status === 'HOT' ? 2 : legacyScore.status === 'WARM' ? 5 : 8) as 2 | 5 | 8,
+          timeframe: (legacyScore.status === 'HOT' ? 'в течение часа' : legacyScore.status === 'WARM' ? 'сегодня' : 'неделя') as 'в течение часа' | 'сегодня' | 'неделя',
+          channel: (legacyScore.status === 'HOT' ? 'звонок' : 'мессенджер') as 'звонок' | 'мессенджер',
+          assignedTo: 'sales-manager' as const,
         },
         redFlags: [],
       };
