@@ -68,8 +68,9 @@ interface AgentRequest {
 const FALLBACK_RESPONSES = {
   configError: 'Извините, AI-сервис временно недоступен из-за ошибки конфигурации. Мы работаем над исправлением.',
   authError: 'Извините, проблема с доступом к AI-сервису. Пожалуйста, попробуйте позже.',
-  rateLimit: 'Слишком много запросов. Пожалуйста, подождите немного и попробуйте снова.',
+  rateLimit: 'Слишком много запросов к AI-сервису. Пожалуйста, подождите немного и попробуйте снова.',
   timeout: 'Запрос занял слишком много времени. Пожалуйста, попробуйте снова или задайте более короткий вопрос.',
+  noProvider: 'Извините, все AI-провайдеры временно недоступны. Пожалуйста, попробуйте позже или свяжитесь с нами напрямую.',
   generic: 'Извините, произошла ошибка при обработке запроса. Попробуйте позже.',
 };
 
@@ -393,6 +394,12 @@ export async function POST(request: NextRequest) {
         } else if (errorMsg.includes('timeout') || errorMsg.includes('abort')) {
           fallbackMessage = FALLBACK_RESPONSES.timeout;
           errorCode = 'TIMEOUT';
+        } else if (errorMsg.includes('no_api_configured') || errorMsg.includes('ни один api')) {
+          fallbackMessage = FALLBACK_RESPONSES.configError;
+          errorCode = 'NO_API_CONFIGURED';
+        } else if (errorMsg.includes('zai_not_configured') || (errorMsg.includes('fallback') && errorMsg.includes('failed'))) {
+          fallbackMessage = FALLBACK_RESPONSES.noProvider;
+          errorCode = 'ALL_PROVIDERS_FAILED';
         }
       }
       
