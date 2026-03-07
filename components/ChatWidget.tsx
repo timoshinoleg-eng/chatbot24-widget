@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import { 
   MessageCircle, 
   X, 
@@ -10,13 +10,42 @@ import {
   FileText, 
   Sparkles,
   AlertCircle,
-  ChevronRight
+  Menu,
+  Clock
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { LeadForm } from "./LeadForm";
 import { ProposalViewer } from "./ProposalViewer";
+import { QuickButtons, QuickButtonsContainer } from "./QuickButtons";
+import { TypingIndicator } from "./TypingIndicator";
+import { ModeSwitcher } from "./ModeSwitcher";
 import { cn } from "@/lib/utils";
+import { 
+  getTimeBasedGreeting, 
+  getQuickButtonsForPage, 
+  PageContext,
+  extractPageContext,
+} from "@/lib/context";
+import { 
+  getCurrentMode, 
+  getModeConfig, 
+  WidgetMode,
+  shouldEscalate,
+  initTriggerState,
+  checkTimeTrigger,
+  checkScrollTrigger,
+} from "@/lib/widget-modes";
+import {
+  getUserId,
+  restoreUserContext,
+  saveUserContext,
+  saveConversationHistory,
+  getConversationHistory,
+  detectTone,
+  updateUserProfile,
+  generateAdaptiveGreeting,
+} from "@/lib/personalization";
 
 interface Message {
   id: string;
@@ -38,26 +67,107 @@ interface ChatContext {
 
 export function ChatWidget() {
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "welcome",
-      role: "assistant",
-      content: "Привет! 👋 Я AI-ассистент ВебСтудии Про. Чем могу помочь?",
-      timestamp: new Date(),
-    },
-  ]);
+  const [showModeMenu, setShowModeMenu] = useState(false);
+  const [currentMode, setCurrentMode] = useState<WidgetMode>("sales");
+  const [pageContext, setPageContext] = useState<PageContext | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [showLeadForm, setShowLeadForm] = useState(false);
   const [showProposal, setShowProposal] = useState(false);
   const [context, setContext] = useState<ChatContext>({});
-  const [suggestedQuestions, setSuggestedQuestions] = useState<string[]>([
-    "Какие услуги вы предлагаете?",
-    "Сколько стоит разработка сайта?",
-    "Какие сроки разработки?",
-  ]);
+  const [quickButtons, setQuickButtons] = useState<Array<{ label: string; action: string }>>([]);
+  const [sessionStartTime] = useState(Date.now());
+  const [typingIndicator, setTypingIndicator] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+  const userId = useRef<string>("");
   const sessionId = useRef(`session_${Date.now()}`);
+  const modeConfig = getModeConfig(currentMode);
+
+  // Initialize on mount
+  useEffect(() => {
+    // Get or create user ID
+    userId.current = getUserId();
+    
+    // Get current mode
+    const mode = getCurrentMode();
+    setCurrentMode(mode);
+
+    // Extract page context
+    const pContext = extractPageContext();
+    setPageContext(pContext);
+
+    // Get quick buttons for current page
+    const buttons = getQuickButtonsForPage(pContext.path);
+    setQuickButtons(buttons);
+
+    // Initialize trigger state
+    initTriggerState(sessionId.current);
+
+    // Restore context and history
+    const initContext = async () => {
+      try {
+        const storedContext = await restoreUserContext(userId.current);
+        const storedHistory = getConversationHistory();
+        
+        // Generate adaptive greeting
+        const greeting = generateAdaptiveGreeting(pContext, storedContext?.userProfile);
+        
+        // Set welcome message based on time of day
+        const timeGreeting = getTimeBasedGreeting();
+        let welcomeContent = greeting.message;
+        
+        // If we have history, add context about previous conversation
+        if (storedHistory.length > 0 && storedContext?.userProfile) {
+          const lastVisit = new Date(storedContext.userProfile.lastSeen);
+          const daysSince = Math.floor((Date.now() - lastVisit.getTime()) / (1000 * 60 * 60 * 24));
+          
+          if (daysSince < 7) {
+            welcomeContent = `С возвращением${storedContext.userProfile.contacts?.name ? `, ${storedContext.userProfile.contacts.name}` : ''}! ${timeGreeting.greeting}`;
+          }
+        }
+
+        setMessages([
+          {
+            id: "welcome",
+            role: "assistant",
+            content: welcomeContent,
+            timestamp: new Date(),
+          },
+        ]);
+
+        // Update user profile with new visit
+        await updateUserProfile(userId.current, {
+          lastSeen: new Date().toISOString(),
+        });
+      } catch (error) {
+        console.error("[ChatWidget] Error initializing context:", error);
+        // Fallback greeting
+        const timeGreeting = getTimeBasedGreeting();
+        setMessages([
+          {
+            id: "welcome",
+            role: "assistant",
+            content: timeGreeting.greeting,
+            timestamp: new Date(),
+          },
+        ]);
+      }
+    };
+
+    initContext();
+
+    // Listen for mode changes
+    const handleModeChange = (e: CustomEvent<{ mode: WidgetMode }>) => {
+      setCurrentMode(e.detail.mode);
+    };
+    window.addEventListener("chatbot24:modeChanged", handleModeChange as EventListener);
+
+    return () => {
+      window.removeEventListener("chatbot24:modeChanged", handleModeChange as EventListener);
+    };
+  }, []);
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -72,11 +182,77 @@ export function ChatWidget() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           event: "chat_start",
-          data: { sessionId: sessionId.current },
+          data: { 
+            sessionId: sessionId.current,
+            mode: currentMode,
+            page: pageContext?.path,
+          },
         }),
       }).catch(console.error);
     }
+  }, [isOpen, currentMode, pageContext?.path]);
+
+  // Proactive triggers (time-based)
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const interval = setInterval(() => {
+      const elapsedSeconds = Math.floor((Date.now() - sessionStartTime) / 1000);
+      const triggerMessage = checkTimeTrigger(sessionId.current, elapsedSeconds);
+      
+      if (triggerMessage && messages.length <= 1) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `proactive_${Date.now()}`,
+            role: "assistant",
+            content: triggerMessage,
+            timestamp: new Date(),
+          },
+        ]);
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [isOpen, sessionStartTime, messages.length]);
+
+  // Scroll depth tracking
+  useEffect(() => {
+    if (!isOpen || !chatContainerRef.current) return;
+
+    const handleScroll = () => {
+      const container = chatContainerRef.current;
+      if (!container) return;
+
+      const scrollDepth = (container.scrollTop / (container.scrollHeight - container.clientHeight)) * 100;
+      const triggerMessage = checkScrollTrigger(sessionId.current, scrollDepth);
+      
+      if (triggerMessage) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `scroll_${Date.now()}`,
+            role: "assistant",
+            content: triggerMessage,
+            timestamp: new Date(),
+          },
+        ]);
+      }
+    };
+
+    const container = chatContainerRef.current;
+    container.addEventListener("scroll", handleScroll);
+    return () => container.removeEventListener("scroll", handleScroll);
   }, [isOpen]);
+
+  // Save conversation history
+  useEffect(() => {
+    if (messages.length > 0) {
+      saveConversationHistory(
+        messages.map((m) => ({ role: m.role, content: m.content }))
+      );
+    }
+  }, [messages]);
 
   const sendMessage = async (content: string) => {
     if (!content.trim() || isLoading) return;
@@ -91,6 +267,13 @@ export function ChatWidget() {
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
     setIsLoading(true);
+    setTypingIndicator(modeConfig.features.showTypingIndicator);
+
+    // Detect tone from messages
+    const tone = detectTone([...messages, userMessage].map((m) => ({
+      role: m.role,
+      content: m.content,
+    })));
 
     try {
       const response = await fetch("/api/agent", {
@@ -102,7 +285,12 @@ export function ChatWidget() {
             content: m.content,
           })),
           userId: sessionId.current,
-          context,
+          context: {
+            ...context,
+            tone,
+            mode: currentMode,
+            pageContext,
+          },
         }),
       });
 
@@ -117,18 +305,26 @@ export function ChatWidget() {
           data: {
             sessionId: sessionId.current,
             sentiment: data.sentiment?.label,
+            tone,
+            mode: currentMode,
           },
         }),
       }).catch(console.error);
 
-      // Update suggested questions
-      if (data.suggestedQuestions) {
-        setSuggestedQuestions(data.suggestedQuestions);
+      // Check for escalation based on mode config
+      const shouldEscalateToHuman = shouldEscalate(
+        messages.length,
+        data.sentiment?.score || 0,
+        content
+      );
+
+      if (shouldEscalateToHuman && modeConfig.fallbackToHuman) {
+        setShowLeadForm(true);
       }
 
-      // Check for escalation
-      if (data.sentiment?.shouldEscalate) {
-        setShowLeadForm(true);
+      // Update quick buttons based on context
+      if (data.suggestedActions) {
+        setQuickButtons(data.suggestedActions);
       }
 
       const assistantMessage: Message = {
@@ -140,6 +336,16 @@ export function ChatWidget() {
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
+
+      // Save user context
+      await saveUserContext(userId.current, {
+        lastMessages: messages.slice(-5).map((m) => ({
+          role: m.role,
+          content: m.content,
+          timestamp: m.timestamp.toISOString(),
+        })),
+      });
+
     } catch (error) {
       console.error("Chat error:", error);
       setMessages((prev) => [
@@ -153,6 +359,7 @@ export function ChatWidget() {
       ]);
     } finally {
       setIsLoading(false);
+      setTypingIndicator(false);
     }
   };
 
@@ -161,8 +368,8 @@ export function ChatWidget() {
     sendMessage(input);
   };
 
-  const handleQuickQuestion = (question: string) => {
-    sendMessage(question);
+  const handleQuickButtonClick = (action: string, label: string) => {
+    sendMessage(label);
   };
 
   const handleLeadSubmit = (leadData: any) => {
@@ -174,6 +381,16 @@ export function ChatWidget() {
       timeline: leadData.timeline,
     }));
     setShowLeadForm(false);
+    
+    // Update user profile with contact info
+    updateUserProfile(userId.current, {
+      contacts: {
+        name: leadData.name,
+        phone: leadData.phone,
+        email: leadData.email,
+        company: leadData.company,
+      },
+    });
     
     // Add confirmation message
     setMessages((prev) => [
@@ -189,6 +406,22 @@ export function ChatWidget() {
 
   const handleProposalRequest = () => {
     setShowProposal(true);
+  };
+
+  const handleModeChange = (mode: WidgetMode) => {
+    setCurrentMode(mode);
+    setShowModeMenu(false);
+    
+    // Add mode change notification
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: `mode_${Date.now()}`,
+        role: "assistant",
+        content: `Режим изменён на "${mode === 'faq' ? 'FAQ' : mode === 'sales' ? 'Продажи' : 'Поддержка'}". ${getModeConfig(mode).greeting}`,
+        timestamp: new Date(),
+      },
+    ]);
   };
 
   return (
@@ -221,29 +454,61 @@ export function ChatWidget() {
               </div>
               <div>
                 <h3 className="font-semibold text-white">Kimi Agent 2.5</h3>
-                <p className="text-xs text-blue-100">AI-ассистент</p>
+                <div className="flex items-center gap-1">
+                  {modeConfig.features.showOnlineStatus && (
+                    <>
+                      <span className="h-2 w-2 rounded-full bg-green-400 animate-pulse"></span>
+                      <span className="text-xs text-blue-100">Онлайн</span>
+                    </>
+                  )}
+                  <span className="text-xs text-blue-100/70">• {currentMode === 'faq' ? 'FAQ' : currentMode === 'sales' ? 'Продажи' : 'Поддержка'}</span>
+                </div>
               </div>
             </div>
             <div className="flex items-center gap-2">
               <button
-                onClick={handleProposalRequest}
+                onClick={() => setShowModeMenu(!showModeMenu)}
                 className="flex h-8 w-8 items-center justify-center rounded-full bg-white/20 transition-colors hover:bg-white/30"
-                title="Получить КП"
+                title="Сменить режим"
               >
-                <FileText className="h-4 w-4 text-white" />
+                <Menu className="h-4 w-4 text-white" />
               </button>
-              <button
-                onClick={() => setShowLeadForm(true)}
-                className="flex h-8 w-8 items-center justify-center rounded-full bg-white/20 transition-colors hover:bg-white/30"
-                title="Оставить заявку"
-              >
-                <Sparkles className="h-4 w-4 text-white" />
-              </button>
+              {modeConfig.enableLeadCapture && (
+                <>
+                  <button
+                    onClick={handleProposalRequest}
+                    className="flex h-8 w-8 items-center justify-center rounded-full bg-white/20 transition-colors hover:bg-white/30"
+                    title="Получить КП"
+                  >
+                    <FileText className="h-4 w-4 text-white" />
+                  </button>
+                  <button
+                    onClick={() => setShowLeadForm(true)}
+                    className="flex h-8 w-8 items-center justify-center rounded-full bg-white/20 transition-colors hover:bg-white/30"
+                    title="Оставить заявку"
+                  >
+                    <Sparkles className="h-4 w-4 text-white" />
+                  </button>
+                </>
+              )}
             </div>
           </div>
 
+          {/* Mode Switcher Dropdown */}
+          {showModeMenu && (
+            <div className="border-b border-gray-100 bg-gray-50 p-3">
+              <ModeSwitcher 
+                variant="compact" 
+                onModeChange={handleModeChange}
+              />
+            </div>
+          )}
+
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          <div 
+            ref={chatContainerRef}
+            className="flex-1 overflow-y-auto p-4 space-y-4"
+          >
             {messages.map((message) => (
               <div
                 key={message.id}
@@ -275,7 +540,7 @@ export function ChatWidget() {
                   )}
                 >
                   {message.content}
-                  {message.sentiment?.label === "NEGATIVE" && (
+                  {message.sentiment?.label === "NEGATIVE" && modeConfig.urgencyIndicators && (
                     <div className="mt-2 flex items-center gap-1 text-xs text-red-400">
                       <AlertCircle className="h-3 w-3" />
                       Обнаружен негатив
@@ -284,38 +549,24 @@ export function ChatWidget() {
                 </div>
               </div>
             ))}
-            {isLoading && (
-              <div className="flex gap-3">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-indigo-600">
-                  <Bot className="h-4 w-4 text-white" />
-                </div>
-                <div className="flex items-center gap-1 rounded-2xl bg-gray-100 px-4 py-3">
-                  <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400" style={{ animationDelay: "0ms" }} />
-                  <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400" style={{ animationDelay: "150ms" }} />
-                  <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400" style={{ animationDelay: "300ms" }} />
-                </div>
-              </div>
+            
+            {/* Typing Indicator */}
+            {(isLoading || typingIndicator) && modeConfig.features.showTypingIndicator && (
+              <TypingIndicator variant="default" />
             )}
+            
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Suggested Questions */}
-          {suggestedQuestions.length > 0 && !isLoading && (
-            <div className="border-t border-gray-100 bg-gray-50 px-4 py-2">
-              <p className="mb-2 text-xs text-gray-500">Быстрые вопросы:</p>
-              <div className="flex flex-wrap gap-2">
-                {suggestedQuestions.slice(0, 3).map((question, index) => (
-                  <button
-                    key={index}
-                    onClick={() => handleQuickQuestion(question)}
-                    className="flex items-center gap-1 rounded-full bg-white px-3 py-1 text-xs text-blue-600 shadow-sm transition-colors hover:bg-blue-50"
-                  >
-                    {question}
-                    <ChevronRight className="h-3 w-3" />
-                  </button>
-                ))}
-              </div>
-            </div>
+          {/* Quick Buttons */}
+          {quickButtons.length > 0 && !isLoading && (
+            <QuickButtonsContainer>
+              <QuickButtons 
+                buttons={quickButtons} 
+                onButtonClick={handleQuickButtonClick}
+                variant="compact"
+              />
+            </QuickButtonsContainer>
           )}
 
           {/* Input */}
@@ -339,13 +590,12 @@ export function ChatWidget() {
               >
                 <Send className="h-4 w-4" />
               </Button>
-            </div>
-          </form>
+            </div>          </form>
         </div>
       )}
 
       {/* Lead Form Modal */}
-      {showLeadForm && (
+      {showLeadForm && modeConfig.enableLeadCapture && (
         <LeadForm
           onSubmit={handleLeadSubmit}
           onClose={() => setShowLeadForm(false)}
@@ -363,3 +613,5 @@ export function ChatWidget() {
     </>
   );
 }
+
+export default ChatWidget;

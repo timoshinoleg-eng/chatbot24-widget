@@ -1,11 +1,12 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { RefreshCw, Calendar, TrendingUp } from "lucide-react";
+import { RefreshCw, Calendar, TrendingUp, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatsCards } from "@/components/admin/StatsCards";
 import { SentimentChart } from "@/components/admin/SentimentChart";
 import { LeadTable } from "@/components/admin/LeadTable";
+import { AdminModePanel } from "@/components/ModeSwitcher";
 
 type Period = "24h" | "7d" | "30d";
 
@@ -156,8 +157,16 @@ export default function AdminDashboard() {
           <div className="rounded-lg bg-red-50 p-4 text-red-600">{error}</div>
         ) : data ? (
           <div className="space-y-6">
-            {/* Stats Cards */}
-            <StatsCards stats={data.summary} />
+            {/* Mode Control Panel */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-2">
+                {/* Stats Cards */}
+                <StatsCards stats={data.summary} />
+              </div>
+              <div>
+                <AdminModePanel />
+              </div>
+            </div>
 
             {/* Charts */}
             <SentimentChart
