@@ -405,6 +405,10 @@ export async function POST(request: NextRequest) {
         fallbackLevel: ragResult.fallbackLevel,
         error: errorCode,
         errorDetails: isDebugMode && apiError instanceof Error ? apiError.message : undefined,
+        diagnostics: isDebugMode ? {
+          aiConfigured: zai.isConfigured(),
+          mockMode: isMockMode,
+        } : undefined,
         requestId,
         duration,
       });
