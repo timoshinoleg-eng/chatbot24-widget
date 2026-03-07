@@ -1,7 +1,8 @@
 /**
- * OpenRouter / Z.AI API Client
- * OpenRouter is the primary provider with qwen/qwen-2.5-14b-instruct model
- * Z.AI serves as a fallback provider
+ * OpenRouter API Client
+ * Primary: DeepSeek V3.2 (deepseek/deepseek-chat-v3.2)
+ * Fallback: Qwen3 235B (qwen/qwen3-235b-a22b-2507)
+ * Both models via OpenRouter for cost efficiency
  * FIXED: Added proper error handling, timeouts, retries, and headers
  */
 
@@ -10,8 +11,8 @@ const ZAI_API_URL = 'https://api.z.ai/api/paas/v4/chat/completions';
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
 // Модели
-const PRIMARY_MODEL = 'qwen/qwen-2.5-14b-instruct'; // Основная модель через OpenRouter
-const FALLBACK_MODEL = 'glm-4.7-flash'; // Запасная модель через Z.AI
+const PRIMARY_MODEL = 'deepseek/deepseek-chat-v3.2'; // Основная модель через OpenRouter
+const FALLBACK_MODEL = 'qwen/qwen3-235b-a22b-2507'; // Запасная модель через OpenRouter
 
 // Конфигурация таймаутов и ретраев
 const CONFIG = {
@@ -257,7 +258,7 @@ class ZAIClient {
 
   /**
    * Создание чат-комплишена
-   * Сначала пробует основной провайдер (OpenRouter), затем запасной (Z.AI) при ошибке
+   * Сначала пробует основную модель (DeepSeek), затем запасную (Qwen3) при ошибке
    */
   async createCompletion(
     messages: ChatMessage[],
@@ -267,29 +268,22 @@ class ZAIClient {
       stream?: boolean;
     } = {}
   ): Promise<ChatCompletionResponse> {
-    // Сначала пробуем основной провайдер (OpenRouter)
-    if (this.isPrimary && this.isValidOpenRouterKey(this.apiKey)) {
+    // Сначала пробуем основную модель (DeepSeek V3.2)
+    if (this.isValidOpenRouterKey(this.apiKey)) {
       try {
         const result = await this.callOpenRouter(messages, options);
-        console.log('[ZAI Client] Успешный ответ от OpenRouter (основной провайдер)');
+        console.log('[ZAI Client] Успешный ответ от OpenRouter (основная модель: DeepSeek V3.2)');
         return result;
       } catch (error) {
-        console.warn('[ZAI Client] OpenRouter недоступен, пробуем Z.AI (запасной):', error instanceof Error ? error.message : error);
+        console.warn('[ZAI Client] DeepSeek недоступен, пробуем Qwen3 235B (запасная):', error instanceof Error ? error.message : error);
         
-        // Если есть запасной ключ Z.AI — пробуем его
-        if (this.fallbackApiKey) {
-          return await this.callZAI(messages, options);
-        }
-        throw error;
+        // Пробуем запасную модель через тот же OpenRouter
+        return await this.callOpenRouterFallback(messages, options);
       }
     }
     
-    // Если основной недоступен или не настроен — используем запасной
-    if (this.fallbackApiKey) {
-      return await this.callZAI(messages, options);
-    }
-    
-    throw new Error('NO_API_CONFIGURED: Ни один API ключ не настроен');
+    // Если основной ключ недоступен — используем запасную модель
+    return await this.callOpenRouterFallback(messages, options);
   }
 
   /**
@@ -356,9 +350,9 @@ class ZAIClient {
   }
 
   /**
-   * Вызов Z.AI API (запасной провайдер)
+   * Вызов OpenRouter API с запасной моделью (fallback)
    */
-  private async callZAI(
+  private async callOpenRouterFallback(
     messages: ChatMessage[],
     options: {
       temperature?: number;
@@ -366,13 +360,11 @@ class ZAIClient {
       stream?: boolean;
     }
   ): Promise<ChatCompletionResponse> {
-    if (!this.fallbackApiKey) {
-      throw new Error('ZAI_NOT_CONFIGURED: Запасной Z.AI API ключ не настроен');
-    }
-
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${this.fallbackApiKey}`,
+      'Authorization': `Bearer ${this.apiKey}`,
+      'HTTP-Referer': this.siteUrl,
+      'X-Title': this.appName,
     };
 
     const requestBody = {
@@ -381,14 +373,16 @@ class ZAIClient {
       temperature: options.temperature ?? 0.7,
       max_tokens: options.max_tokens ?? 1000,
       stream: options.stream ?? false,
+      transforms: ['middle-out'],
+      route: 'fallback',
     };
 
-    console.log('[ZAI Client] Отправка запроса в Z.AI (запасной провайдер):', {
+    console.log('[ZAI Client] Отправка запроса в OpenRouter (fallback модель):', {
       model: FALLBACK_MODEL,
       messagesCount: messages.length,
     });
 
-    const response = await this.fetchWithRetry(ZAI_API_URL, {
+    const response = await this.fetchWithRetry(OPENROUTER_API_URL, {
       method: 'POST',
       headers,
       body: JSON.stringify(requestBody),
@@ -396,20 +390,20 @@ class ZAIClient {
 
     if (!response.ok) {
       const error = await this.handleAPIError(response);
-      console.error('[ZAI Client] Ошибка Z.AI:', error);
+      console.error('[ZAI Client] Ошибка OpenRouter (fallback):', error);
       throw new Error(`${error.code}: ${error.message}${error.action ? ` (${error.action})` : ''}`);
     }
 
     const data = await response.json();
     
-    console.log('[ZAI Client] Успешный ответ от Z.AI (запасной):', {
+    console.log('[ZAI Client] Успешный ответ от OpenRouter (fallback):', {
       model: data.model,
       tokens: data.usage?.total_tokens,
     });
 
     // Add debug metadata
     (data as ChatCompletionResponse)._debug = {
-      provider: 'zai',
+      provider: 'openrouter',
       model: data.model || FALLBACK_MODEL,
       fallbackUsed: true,
       timestamp: new Date().toISOString(),
@@ -419,32 +413,27 @@ class ZAIClient {
   }
 }
 
-// Определяем API ключи из переменных окружения
-// OpenRouter — основной провайдер (qwen/qwen-2.5-14b-instruct)
+// Определяем API ключ из переменных окружения
+// OpenRouter используется для обеих моделей (DeepSeek V3.2 основная, Qwen3 235B запасная)
 const openRouterKey = process.env.OPENROUTER_API_KEY || '';
-
-// Z.AI — запасной провайдер (используется при недоступности OpenRouter)
-const zaiKey = process.env.ZAI_API_KEY || '';
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://chatbot24-widget.vercel.app';
 
-// Проверяем валидность ключей
+// Проверяем валидность ключа
 const isValidOpenRouterKey = openRouterKey.startsWith('sk-or-v1-') && openRouterKey.length > 20;
-const isValidZaiKey = zaiKey.length > 10 && !zaiKey.startsWith('sk-or-v1-');
 
 // Singleton instance
-// Передаём OpenRouter как основной, Z.AI как запасной
 export const zai = new ZAIClient(
   isValidOpenRouterKey ? openRouterKey : '',
-  isValidZaiKey ? zaiKey : null,
+  null, // fallbackKey больше не нужен, обе модели на OpenRouter
   PRIMARY_MODEL,
   siteUrl,
   'Chatbot24 Widget',
   true // isPrimary = true (OpenRouter)
 );
 
-// Флаг мок-режима (если оба ключа невалидны)
-export const isMockMode = !isValidOpenRouterKey && !isValidZaiKey;
+// Флаг мок-режима (если ключ невалиден)
+export const isMockMode = !isValidOpenRouterKey;
 
 // Экспорт класса для создания кастомных инстансов
 export { ZAIClient };
