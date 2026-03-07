@@ -387,7 +387,7 @@ export async function POST(request: NextRequest) {
         if (errorMsg.includes('auth_failed') || errorMsg.includes('401')) {
           fallbackMessage = FALLBACK_RESPONSES.authError;
           errorCode = 'AUTH_FAILED';
-        } else if (errorMsg.includes('rate_limit') || errorMsg.includes('429')) {
+        } else if (errorMsg.includes('rate_limit') || errorMsg.includes('429') || errorMsg.includes('rate limit')) {
           fallbackMessage = FALLBACK_RESPONSES.rateLimit;
           errorCode = 'RATE_LIMIT';
         } else if (errorMsg.includes('timeout') || errorMsg.includes('abort')) {
