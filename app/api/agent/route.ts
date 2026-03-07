@@ -299,11 +299,20 @@ export async function POST(request: NextRequest) {
 
       const completion = await zai.createCompletion(apiMessages, {
         temperature: 0.7,
-        max_tokens: 1000,
+        max_tokens: 2000, // Увеличено для длинных ответов
       });
 
       const aiResponse = completion.choices?.[0]?.message?.content || '';
+      const finishReason = completion.choices?.[0]?.finish_reason;
       const aiDuration = Date.now() - aiStartTime;
+
+      // Проверка на обрыв ответа
+      if (finishReason === 'length') {
+        logStep(reqContext, 'ai_response_truncated', { 
+          finishReason, 
+          responseLength: aiResponse.length 
+        });
+      }
 
       if (!aiResponse) {
         logStep(reqContext, 'ai_empty_response');
@@ -359,6 +368,7 @@ export async function POST(request: NextRequest) {
             completion: completion.usage?.completion_tokens || 0,
           },
           fallback_triggered_at: isFallbackUsed ? 'api_request' : undefined,
+          finish_reason: finishReason,
           rag: {
             result_count: ragResult.relevantChunks.length,
             max_combined_score: ragResult.maxCombinedScore,

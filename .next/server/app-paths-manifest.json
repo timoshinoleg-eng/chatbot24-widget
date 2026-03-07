@@ -1,0 +1,17 @@
+{
+  "/_global-error/page": "app/_global-error/page.js",
+  "/_not-found/page": "app/_not-found/page.js",
+  "/admin/page": "app/admin/page.js",
+  "/api/agent/route": "app/api/agent/route.js",
+  "/api/analytics/cohort/route": "app/api/analytics/cohort/route.js",
+  "/api/analytics/export/route": "app/api/analytics/export/route.js",
+  "/api/analytics/heatmap/route": "app/api/analytics/heatmap/route.js",
+  "/api/analytics/route": "app/api/analytics/route.js",
+  "/api/health/route": "app/api/health/route.js",
+  "/api/lead/route": "app/api/lead/route.js",
+  "/api/pdf/route": "app/api/pdf/route.js",
+  "/api/proposal/route": "app/api/proposal/route.js",
+  "/api/sentiment/route": "app/api/sentiment/route.js",
+  "/page": "app/page.js",
+  "/widget/page": "app/widget/page.js"
+}

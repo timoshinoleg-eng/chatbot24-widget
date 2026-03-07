@@ -1,0 +1,171 @@
+{
+  "version": 3,
+  "pages404": true,
+  "appType": "app",
+  "caseSensitive": false,
+  "basePath": "",
+  "redirects": [
+    {
+      "source": "/:path+/",
+      "destination": "/:path+",
+      "internal": true,
+      "priority": true,
+      "statusCode": 308,
+      "regex": "^(?:/((?:[^/]+?)(?:/(?:[^/]+?))*))/$"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/embed.js",
+      "headers": [
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=3600"
+        }
+      ],
+      "regex": "^/embed\\.js(?:/)?$"
+    },
+    {
+      "source": "/api/:path*",
+      "headers": [
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        },
+        {
+          "key": "Access-Control-Allow-Methods",
+          "value": "GET, POST, OPTIONS, HEAD"
+        },
+        {
+          "key": "Access-Control-Allow-Headers",
+          "value": "Content-Type, Authorization, X-Requested-With"
+        },
+        {
+          "key": "Access-Control-Allow-Credentials",
+          "value": "true"
+        }
+      ],
+      "regex": "^/api(?:/((?:[^/]+?)(?:/(?:[^/]+?))*))?(?:/)?$"
+    }
+  ],
+  "rewrites": {
+    "beforeFiles": [],
+    "afterFiles": [],
+    "fallback": []
+  },
+  "dynamicRoutes": [],
+  "staticRoutes": [
+    {
+      "page": "/",
+      "regex": "^/(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/(?:/)?$"
+    },
+    {
+      "page": "/_global-error",
+      "regex": "^/_global\\-error(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/_global\\-error(?:/)?$"
+    },
+    {
+      "page": "/_not-found",
+      "regex": "^/_not\\-found(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/_not\\-found(?:/)?$"
+    },
+    {
+      "page": "/admin",
+      "regex": "^/admin(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/admin(?:/)?$"
+    },
+    {
+      "page": "/api/agent",
+      "regex": "^/api/agent(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/agent(?:/)?$"
+    },
+    {
+      "page": "/api/analytics",
+      "regex": "^/api/analytics(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/analytics(?:/)?$"
+    },
+    {
+      "page": "/api/analytics/cohort",
+      "regex": "^/api/analytics/cohort(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/analytics/cohort(?:/)?$"
+    },
+    {
+      "page": "/api/analytics/export",
+      "regex": "^/api/analytics/export(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/analytics/export(?:/)?$"
+    },
+    {
+      "page": "/api/analytics/heatmap",
+      "regex": "^/api/analytics/heatmap(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/analytics/heatmap(?:/)?$"
+    },
+    {
+      "page": "/api/health",
+      "regex": "^/api/health(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/health(?:/)?$"
+    },
+    {
+      "page": "/api/lead",
+      "regex": "^/api/lead(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/lead(?:/)?$"
+    },
+    {
+      "page": "/api/pdf",
+      "regex": "^/api/pdf(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/pdf(?:/)?$"
+    },
+    {
+      "page": "/api/proposal",
+      "regex": "^/api/proposal(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/proposal(?:/)?$"
+    },
+    {
+      "page": "/api/sentiment",
+      "regex": "^/api/sentiment(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/sentiment(?:/)?$"
+    },
+    {
+      "page": "/widget",
+      "regex": "^/widget(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/widget(?:/)?$"
+    }
+  ],
+  "dataRoutes": [],
+  "rsc": {
+    "header": "rsc",
+    "varyHeader": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch",
+    "prefetchHeader": "next-router-prefetch",
+    "didPostponeHeader": "x-nextjs-postponed",
+    "contentTypeHeader": "text/x-component",
+    "suffix": ".rsc",
+    "prefetchSegmentHeader": "next-router-segment-prefetch",
+    "prefetchSegmentSuffix": ".segment.rsc",
+    "prefetchSegmentDirSuffix": ".segments",
+    "clientParamParsing": false,
+    "dynamicRSCPrerender": false
+  },
+  "rewriteHeaders": {
+    "pathHeader": "x-nextjs-rewritten-path",
+    "queryHeader": "x-nextjs-rewritten-query"
+  }
+}
