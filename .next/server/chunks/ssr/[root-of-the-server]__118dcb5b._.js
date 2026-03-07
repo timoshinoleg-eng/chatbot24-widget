@@ -1,3 +1,0 @@
-module.exports=[29986,a=>{a.v({className:"inter_222bd768-module__ipYlpq__className"})},33290,a=>{"use strict";var b=a.i(7997),c=a.i(29986);let d={className:c.default.className,style:{fontFamily:"'Inter', 'Inter Fallback'",fontStyle:"normal"}};function e({children:a}){return(0,b.jsx)("html",{lang:"ru",children:(0,b.jsx)("body",{className:d.className,children:a})})}null!=c.default.variable&&(d.variable=c.default.variable),a.s(["default",()=>e,"metadata",0,{title:"ChatBot24 AI Widget",description:"Enterprise AI chat widget with lead scoring"}],33290)}];
-
-//# sourceMappingURL=%5Broot-of-the-server%5D__118dcb5b._.js.map
