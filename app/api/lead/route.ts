@@ -4,7 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { scoreLeadWithAI, formatScoreForBitrix, isHotLead } from '@/lib/scoring';
+import { scoreLeadWithAI, formatScoreForBitrix, isHotLead, ConversationMessage } from '@/lib/scoring';
 import { analyzeSentiment } from '@/lib/sentiment';
 import { getBitrix24ExtendedClient, ExtendedLeadData } from '@/lib/bitrix24-ext';
 import { getBitrix24TasksClient } from '@/lib/bitrix24-tasks';
@@ -23,7 +23,7 @@ interface LeadRequest {
   message?: string;
   source?: string;
   pageUrl?: string;
-  conversationHistory?: Array<{ role: string; content: string }>;
+  conversationHistory?: ConversationMessage[];
   utmSource?: string;
   utmMedium?: string;
   utmCampaign?: string;
