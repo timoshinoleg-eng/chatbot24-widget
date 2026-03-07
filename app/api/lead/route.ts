@@ -10,6 +10,7 @@ import { getBitrix24ExtendedClient, ExtendedLeadData } from '@/lib/bitrix24-ext'
 import { getBitrix24TasksClient } from '@/lib/bitrix24-tasks';
 import { getBitrix24TriggersClient } from '@/lib/bitrix24-triggers';
 import { logStep, createRequestContext } from '@/lib/logger';
+import { chatSessions } from '@/app/api/analytics/route';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,6 +24,7 @@ interface LeadRequest {
   message?: string;
   source?: string;
   pageUrl?: string;
+  sessionId?: string;
   conversationHistory?: ConversationMessage[];
   utmSource?: string;
   utmMedium?: string;
@@ -282,6 +284,14 @@ export async function POST(request: NextRequest) {
       leadId: leadResult.leadId,
       status: aiScore.status,
     });
+
+    // Track lead creation in analytics
+    const numericScore = aiScore.status === 'HOT' ? 80 : aiScore.status === 'WARM' ? 55 : 25;
+    const session = chatSessions.find(s => s.id === body.sessionId);
+    if (session) {
+      session.convertedToLead = true;
+      session.score = numericScore;
+    }
 
     return NextResponse.json({
       success: true,

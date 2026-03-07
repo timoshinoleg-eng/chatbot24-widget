@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 interface LeadFormProps {
   onSubmit: (data: LeadFormData) => void;
   onClose: () => void;
+  sessionId?: string;
   initialData?: {
     name?: string;
     company?: string;
@@ -33,9 +34,10 @@ export interface LeadFormData {
   budget: string;
   timeline: string;
   message: string;
+  sessionId?: string;
 }
 
-export function LeadForm({ onSubmit, onClose, initialData }: LeadFormProps) {
+export function LeadForm({ onSubmit, onClose, sessionId, initialData }: LeadFormProps) {
   const [formData, setFormData] = useState<LeadFormData>({
     name: initialData?.name || "",
     company: initialData?.company || "",
@@ -44,6 +46,7 @@ export function LeadForm({ onSubmit, onClose, initialData }: LeadFormProps) {
     budget: initialData?.budget || "не указан",
     timeline: initialData?.timeline || "не указаны",
     message: "",
+    sessionId: sessionId,
   });
 
   const [errors, setErrors] = useState<Partial<Record<keyof LeadFormData, string>>>({});

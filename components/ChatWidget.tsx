@@ -599,6 +599,7 @@ export function ChatWidget() {
         <LeadForm
           onSubmit={handleLeadSubmit}
           onClose={() => setShowLeadForm(false)}
+          sessionId={sessionId.current}
           initialData={context}
         />
       )}
