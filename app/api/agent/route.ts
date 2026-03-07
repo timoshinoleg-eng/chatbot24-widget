@@ -86,6 +86,7 @@ export async function POST(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const isDebugMode = searchParams.get('debug') === '1' || searchParams.get('debug') === 'true';
   const showModel = searchParams.get('show_model') === '1' || process.env.DEBUG_SHOW_MODEL === 'true';
+  const useLLMRerank = searchParams.get('rerank') === '1' || searchParams.get('rerank') === 'true' || process.env.RAG_USE_LLM_RERANK === 'true';
 
   logStep(reqContext, 'request_start', {
     method: 'POST',
@@ -169,7 +170,10 @@ export async function POST(request: NextRequest) {
 
     // Hybrid RAG search
     const ragStartTime = Date.now();
-    const ragResult = await hybridSearch(sanitizedInput, { topK: 5 });
+    const ragResult = await hybridSearch(sanitizedInput, { 
+      topK: 5,
+      useLLMRerank,
+    });
     const ragDuration = Date.now() - ragStartTime;
 
     logStep(reqContext, 'rag_complete', {
@@ -267,6 +271,7 @@ export async function POST(request: NextRequest) {
             result_count: ragResult.relevantChunks.length,
             max_score: ragResult.maxCombinedScore,
             fallback_level: ragResult.fallbackLevel,
+            use_llm_rerank: useLLMRerank,
           },
         };
       }
@@ -314,10 +319,11 @@ export async function POST(request: NextRequest) {
 
       const duration = Date.now() - startTime;
       
-      // Determine provider and model
-      const isFallbackUsed = (completion as unknown as Record<string, unknown>)?._fallbackUsed === true;
-      const provider = isFallbackUsed ? 'zai' : 'openrouter';
-      const model = isFallbackUsed ? 'glm-4.7-flash' : (completion.model || 'qwen/qwen-2.5-14b-instruct');
+      // Determine provider and model from debug metadata
+      const debugInfo = completion._debug;
+      const provider = debugInfo?.provider || 'unknown';
+      const model = debugInfo?.model || completion.model || 'unknown';
+      const isFallbackUsed = debugInfo?.fallbackUsed || false;
       
       logStep(reqContext, 'ai_response_complete', {
         provider,
@@ -359,6 +365,7 @@ export async function POST(request: NextRequest) {
             fallback_level: ragResult.fallbackLevel,
             semantic_weight: 0.6,
             keyword_weight: 0.4,
+            use_llm_rerank: useLLMRerank,
           },
           prompt_context: {
             selected_persona: promptContext.widgetMode || 'consultant',
@@ -496,12 +503,14 @@ export async function GET(request: NextRequest) {
       keywordWeight: 0.4,
       topK: 5,
       rerankThreshold: 0.5,
+      llmRerank: true,
     },
     features: {
       hybridRag: true,
       aiScoring: true,
       personaSelection: true,
       debugMode: true,
+      llmRerank: true,
     },
     timestamp: new Date().toISOString(),
   };

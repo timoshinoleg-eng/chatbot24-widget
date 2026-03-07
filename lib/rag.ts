@@ -6,6 +6,7 @@
 
 import faqData from '@/data/faq-chatbot24.json';
 import { SemanticSearcher, createEmbeddingModel, cosineSimilarity } from './embeddings';
+import { zai } from './zai';
 
 // Configuration
 const SEMANTIC_WEIGHT = 0.6;
@@ -34,6 +35,8 @@ export interface HybridSearchResultItem {
   semanticScore: number;  // normalized [0, 1]
   bm25Score: number;      // normalized [0, 1]
   combinedScore: number;  // 0.6 × semantic + 0.4 × bm25
+  llmScore?: number;      // optional LLM rerank score
+  rerankReason?: string;  // optional reason from LLM rerank
   category: string;
   metadata: Record<string, unknown>;
 }
@@ -132,6 +135,7 @@ function normalizeScores(scores: number[]): number[] {
 
 /**
  * Hybrid search combining BM25 and semantic similarity
+ * Optionally uses LLM-based reranking for high-confidence candidates
  */
 export async function hybridSearch(
   query: string,
@@ -140,6 +144,7 @@ export async function hybridSearch(
     rerankThreshold?: number;
     semanticWeight?: number;
     keywordWeight?: number;
+    useLLMRerank?: boolean;
   } = {}
 ): Promise<HybridSearchResult> {
   const {
@@ -147,6 +152,7 @@ export async function hybridSearch(
     rerankThreshold = RERANK_THRESHOLD,
     semanticWeight = SEMANTIC_WEIGHT,
     keywordWeight = KEYWORD_WEIGHT,
+    useLLMRerank = false,
   } = options;
 
   if (!query || query.trim().length < 2) {
@@ -210,11 +216,23 @@ export async function hybridSearch(
   });
 
   // Sort by combined score
-  const sortedResults = combinedResults
+  let sortedResults = combinedResults
     .sort((a, b) => b.combinedScore - a.combinedScore)
     .slice(0, topK);
 
   const maxCombinedScore = sortedResults[0]?.combinedScore || 0;
+
+  // Apply LLM reranking if enabled and score is high enough
+  if (useLLMRerank && maxCombinedScore >= rerankThreshold) {
+    try {
+      sortedResults = await llmRerank(query, sortedResults, {
+        threshold: rerankThreshold,
+        maxCandidates: topK,
+      });
+    } catch (error) {
+      console.warn('[RAG] LLM reranking failed, using original scores:', error);
+    }
+  }
 
   // Determine fallback level
   let fallbackLevel: 'none' | 'partial' | 'full' = 'none';
@@ -235,31 +253,122 @@ export async function hybridSearch(
 
 /**
  * LLM-based reranking for high-confidence candidates
- * Uses a lightweight model to verify relevance
+ * Uses a lightweight model to verify relevance and reorder results
  */
 export async function llmRerank(
   query: string,
   candidates: HybridSearchResultItem[],
   options: {
-    apiClient?: unknown;
     threshold?: number;
+    maxCandidates?: number;
+    temperature?: number;
   } = {}
 ): Promise<HybridSearchResultItem[]> {
   const threshold = options.threshold || RERANK_THRESHOLD;
-  
+  const maxCandidates = options.maxCandidates || 5;
+  const temperature = options.temperature ?? 0.1;
+
   // Filter candidates above threshold
-  const eligibleCandidates = candidates.filter(c => c.combinedScore > threshold);
-  
+  const eligibleCandidates = candidates.filter(c => c.combinedScore >= threshold);
+
   if (eligibleCandidates.length === 0) {
-    return candidates;
+    return candidates.slice(0, maxCandidates);
   }
 
-  // For now, return candidates sorted by combined score
-  // In production, this would call an LLM to rerank
-  // Example prompt:
-  // "Rate the relevance of each document to the query on a scale of 0-10...
-  
-  return eligibleCandidates.sort((a, b) => b.combinedScore - a.combinedScore);
+  // If only one candidate, return it
+  if (eligibleCandidates.length === 1) {
+    return eligibleCandidates;
+  }
+
+  // If ZAI is not configured, return sorted by combined score
+  if (!zai.isConfigured()) {
+    return eligibleCandidates
+      .sort((a, b) => b.combinedScore - a.combinedScore)
+      .slice(0, maxCandidates);
+  }
+
+  try {
+    // Build prompt for LLM reranking
+    const rerankPrompt = `Ты — система реранжирования результатов поиска. Оцени релевантность каждого документа к запросу пользователя.
+
+ЗАПРОС ПОЛЬЗОВАТЕЛЯ:
+"""${query}"""
+
+ДОКУМЕНТЫ ДЛЯ ОЦЕНКИ:
+${eligibleCandidates.map((c, i) => `
+[${i + 1}] ID: ${c.id}
+Категория: ${c.category}
+Текст: ${c.text.substring(0, 200)}${c.text.length > 200 ? '...' : ''}
+Текущий скор: ${(c.combinedScore * 100).toFixed(1)}%`).join('\n---\n')}
+
+ЗАДАЧА:
+Оцени релевантность каждого документа к запросу по шкале 0-100, где:
+- 0-30: Не релевантен
+- 31-60: Частично релевантен
+- 61-85: Релевантен
+- 86-100: Высоко релевантен, прямое совпадение
+
+Учитывай:
+1. Смысловое соответствие запросу
+2. Полнота ответа на вопрос
+3. Точность информации
+
+Ответь СТРОГО в формате JSON:
+{
+  "rankings": [
+    {"id": "doc_id", "score": 95, "reason": "краткое обоснование"},
+    ...
+  ]
+}`;
+
+    const response = await zai.createCompletion([
+      { role: 'system', content: 'Ты — система реранжирования. Отвечай только в JSON формате.' },
+      { role: 'user', content: rerankPrompt },
+    ], {
+      temperature,
+      max_tokens: 800,
+    });
+
+    const content = response.choices?.[0]?.message?.content || '';
+
+    // Parse JSON response
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]) as { rankings: Array<{ id: string; score: number; reason: string }> };
+
+      // Create score map from LLM rankings
+      const scoreMap = new Map(parsed.rankings.map(r => [r.id, r.score]));
+
+      // Re-rank candidates based on LLM scores
+      const rerankedCandidates = eligibleCandidates.map(c => {
+        const llmScore = scoreMap.get(c.id);
+        if (llmScore !== undefined) {
+          // Combine original score with LLM score (weighted average)
+          const normalizedLlmScore = llmScore / 100;
+          const newCombinedScore = (c.combinedScore * 0.4) + (normalizedLlmScore * 0.6);
+          return {
+            ...c,
+            combinedScore: newCombinedScore,
+            llmScore: normalizedLlmScore,
+            rerankReason: parsed.rankings.find(r => r.id === c.id)?.reason,
+          };
+        }
+        return c;
+      });
+
+      // Sort by new combined score
+      return rerankedCandidates
+        .sort((a, b) => b.combinedScore - a.combinedScore)
+        .slice(0, maxCandidates);
+    }
+  } catch (error) {
+    console.warn('[RAG] LLM reranking failed, using original scores:', error);
+  }
+
+  // Fallback: return sorted by original combined score
+  return eligibleCandidates
+    .sort((a, b) => b.combinedScore - a.combinedScore)
+    .slice(0, maxCandidates);
 }
 
 /**

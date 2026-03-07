@@ -43,6 +43,13 @@ interface ChatCompletionResponse {
     completion_tokens: number;
     total_tokens: number;
   };
+  // Debug metadata
+  _debug?: {
+    provider: 'openrouter' | 'zai';
+    model: string;
+    fallbackUsed: boolean;
+    timestamp: string;
+  };
 }
 
 interface APIError {
@@ -337,6 +344,14 @@ class ZAIClient {
       tokens: data.usage?.total_tokens,
     });
 
+    // Add debug metadata
+    (data as ChatCompletionResponse)._debug = {
+      provider: 'openrouter',
+      model: data.model || PRIMARY_MODEL,
+      fallbackUsed: false,
+      timestamp: new Date().toISOString(),
+    };
+
     return data;
   }
 
@@ -392,11 +407,15 @@ class ZAIClient {
       tokens: data.usage?.total_tokens,
     });
 
-    // Добавляем флаг, что использовался запасной провайдер
-    return {
-      ...data,
-      _fallbackUsed: true,
-    } as ChatCompletionResponse;
+    // Add debug metadata
+    (data as ChatCompletionResponse)._debug = {
+      provider: 'zai',
+      model: data.model || FALLBACK_MODEL,
+      fallbackUsed: true,
+      timestamp: new Date().toISOString(),
+    };
+
+    return data;
   }
 }
 
