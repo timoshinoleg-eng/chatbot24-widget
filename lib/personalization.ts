@@ -169,8 +169,15 @@ export async function restoreUserContext(userId: string): Promise<Partial<Stored
       try {
         const stored = localStorage.getItem(`chatbot24_context_${userId}`);
         if (!stored) return null;
-        // Handle corrupted data
-        if (stored === '[object Object]') {
+        // Handle corrupted data - check for common issues
+        if (stored === '[object Object]' || stored.startsWith('[object')) {
+          console.warn('[Personalization] Found corrupted context data, removing:', stored);
+          localStorage.removeItem(`chatbot24_context_${userId}`);
+          return null;
+        }
+        // Validate JSON before parsing
+        if (!stored.trim().startsWith('{') && !stored.trim().startsWith('[')) {
+          console.warn('[Personalization] Invalid JSON format, removing:', stored.substring(0, 50));
           localStorage.removeItem(`chatbot24_context_${userId}`);
           return null;
         }
@@ -187,7 +194,14 @@ export async function restoreUserContext(userId: string): Promise<Partial<Stored
   try {
     const key = `${CONTEXT_KEY_PREFIX}${userId}`;
     const data = await redis.get<string>(key);
-    return data ? JSON.parse(data) : null;
+    if (!data) return null;
+    // Handle corrupted data
+    if (data === '[object Object]' || data.startsWith('[object')) {
+      console.warn('[Personalization] Found corrupted Redis context data');
+      await redis.del(key);
+      return null;
+    }
+    return JSON.parse(data);
   } catch (error) {
     console.error('[Personalization] Failed to restore context:', error);
     return null;
@@ -299,8 +313,20 @@ export function saveConversationHistory(messages: Array<{ role: string; content:
  */
 export function getConversationHistory(): Array<{ role: string; content: string }> {
   if (typeof window === 'undefined') return [];
-  const stored = localStorage.getItem(STORAGE_KEYS.CONVERSATION_HISTORY);
-  return stored ? JSON.parse(stored) : [];
+  try {
+    const stored = localStorage.getItem(STORAGE_KEYS.CONVERSATION_HISTORY);
+    if (!stored) return [];
+    // Handle corrupted data
+    if (stored === '[object Object]') {
+      localStorage.removeItem(STORAGE_KEYS.CONVERSATION_HISTORY);
+      return [];
+    }
+    return JSON.parse(stored);
+  } catch (error) {
+    console.error('[Personalization] Failed to parse conversation history:', error);
+    localStorage.removeItem(STORAGE_KEYS.CONVERSATION_HISTORY);
+    return [];
+  }
 }
 
 // ============================================
