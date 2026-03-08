@@ -1,9 +1,19 @@
 "use client";
 
-import React from "react";
-import { ArrowUpDown, ExternalLink } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
+import { useState } from 'react';
+import { motion } from 'framer-motion';
+import { Search, Eye, Pencil, Trash2, Flame, Thermometer, Snowflake } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { cn } from '@/lib/utils';
 
 interface Lead {
   ID: string;
@@ -15,102 +25,217 @@ interface Lead {
   SOURCE_ID: string;
 }
 
-interface LeadTableProps {
+interface LeadsTableProps {
   leads: Lead[];
 }
 
-export function LeadTable({ leads }: LeadTableProps) {
-  const getScoreBadge = (title: string) => {
-    if (title.includes("HOT")) {
-      return (
-        <span className="inline-flex items-center rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-800">
-          HOT
-        </span>
-      );
-    }
-    if (title.includes("WARM")) {
-      return (
-        <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800">
-          WARM
-        </span>
-      );
-    }
-    return (
-      <span className="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-800">
-        COLD
-      </span>
-    );
+type StatusFilter = 'all' | 'HOT' | 'WARM' | 'COLD';
+
+const statusConfig = {
+  HOT: {
+    icon: Flame,
+    label: 'HOT',
+    className: 'bg-rose-500/20 text-rose-400 border-rose-500/30',
+  },
+  WARM: {
+    icon: Thermometer,
+    label: 'WARM',
+    className: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
+  },
+  COLD: {
+    icon: Snowflake,
+    label: 'COLD',
+    className: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+  },
+};
+
+export function LeadsTable({ leads }: LeadsTableProps) {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+
+  // Parse status from lead title
+  const getLeadStatus = (title: string): 'HOT' | 'WARM' | 'COLD' => {
+    if (title.includes('HOT')) return 'HOT';
+    if (title.includes('WARM')) return 'WARM';
+    return 'COLD';
   };
 
+  const filteredLeads = leads.filter((lead) => {
+    const matchesSearch =
+      (lead.NAME || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (lead.COMPANY_TITLE || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      lead.ID.includes(searchQuery);
+    const leadStatus = getLeadStatus(lead.TITLE);
+    const matchesStatus = statusFilter === 'all' || leadStatus === statusFilter;
+    return matchesSearch && matchesStatus;
+  });
+
   const formatDate = (dateString: string) => {
-    if (!dateString) return "-";
+    if (!dateString) return '-';
     const date = new Date(dateString);
-    return date.toLocaleDateString("ru-RU", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
+    return date.toLocaleDateString('ru-RU', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
     });
   };
 
   const formatBudget = (amount: string) => {
-    if (!amount || amount === "0") return "-";
+    if (!amount || amount === '0' || amount === '0.00') return '-';
     const num = parseInt(amount, 10);
-    return `${num.toLocaleString("ru-RU")} ₽`;
+    return `${num.toLocaleString('ru-RU')} ₽`;
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Последние лиды</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-200">
-                <th className="pb-3 text-left font-medium text-gray-500">ID</th>
-                <th className="pb-3 text-left font-medium text-gray-500">Имя</th>
-                <th className="pb-3 text-left font-medium text-gray-500">Компания</th>
-                <th className="pb-3 text-left font-medium text-gray-500">Бюджет</th>
-                <th className="pb-3 text-left font-medium text-gray-500">Статус</th>
-                <th className="pb-3 text-left font-medium text-gray-500">Дата</th>
-                <th className="pb-3 text-left font-medium text-gray-500"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {leads.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="py-8 text-center text-gray-500">
-                    Нет данных о лидах
-                  </td>
-                </tr>
-              ) : (
-                leads.map((lead) => (
-                  <tr key={lead.ID} className="hover:bg-gray-50">
-                    <td className="py-3 text-gray-900">#{lead.ID}</td>
-                    <td className="py-3 font-medium text-gray-900">
-                      {lead.NAME || lead.TITLE?.split("—")[1]?.trim() || "-"}
-                    </td>
-                    <td className="py-3 text-gray-600">{lead.COMPANY_TITLE || "-"}</td>
-                    <td className="py-3 text-gray-900">
-                      {formatBudget(lead.OPPORTUNITY)}
-                    </td>
-                    <td className="py-3">{getScoreBadge(lead.TITLE)}</td>
-                    <td className="py-3 text-gray-600">
-                      {formatDate(lead.DATE_CREATE)}
-                    </td>
-                    <td className="py-3">
-                      <button className="text-blue-600 hover:text-blue-800">
-                        <ExternalLink className="h-4 w-4" />
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, delay: 0.35, ease: [0.4, 0, 0.2, 1] }}
+      className="bg-slate-800 border border-slate-700 rounded-xl p-6 shadow-card"
+    >
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+        <h3 className="text-lg font-semibold text-slate-50">Последние лиды</h3>
+
+        <div className="flex flex-col sm:flex-row gap-3">
+          {/* Search */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+            <Input
+              placeholder="Поиск..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10 bg-slate-700/50 border-slate-600 text-slate-200 placeholder:text-slate-500 w-full sm:w-64"
+            />
+          </div>
+
+          {/* Status Filters */}
+          <div className="flex gap-1">
+            {(['all', 'HOT', 'WARM', 'COLD'] as StatusFilter[]).map((status) => (
+              <Button
+                key={status}
+                variant="ghost"
+                size="sm"
+                onClick={() => setStatusFilter(status)}
+                className={cn(
+                  'text-xs font-medium capitalize',
+                  statusFilter === status
+                    ? 'bg-indigo-500/20 text-indigo-400'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-700'
+                )}
+              >
+                {status === 'all' ? 'Все' : status}
+              </Button>
+            ))}
+          </div>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+
+      {/* Table */}
+      <div className="overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow className="border-slate-700 hover:bg-transparent">
+              <TableHead className="text-slate-400 font-medium uppercase text-xs tracking-wider">
+                ID
+              </TableHead>
+              <TableHead className="text-slate-400 font-medium uppercase text-xs tracking-wider">
+                Имя
+              </TableHead>
+              <TableHead className="text-slate-400 font-medium uppercase text-xs tracking-wider">
+                Компания
+              </TableHead>
+              <TableHead className="text-slate-400 font-medium uppercase text-xs tracking-wider">
+                Бюджет
+              </TableHead>
+              <TableHead className="text-slate-400 font-medium uppercase text-xs tracking-wider">
+                Статус
+              </TableHead>
+              <TableHead className="text-slate-400 font-medium uppercase text-xs tracking-wider">
+                Дата
+              </TableHead>
+              <TableHead className="text-slate-400 font-medium uppercase text-xs tracking-wider text-right">
+                Действия
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {filteredLeads.map((lead, index) => {
+              const status = statusConfig[getLeadStatus(lead.TITLE)];
+              const StatusIcon = status.icon;
+
+              return (
+                <motion.tr
+                  key={lead.ID}
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ duration: 0.2, delay: 0.4 + index * 0.05 }}
+                  className="border-slate-700/50 hover:bg-slate-700/30 transition-colors group"
+                >
+                  <TableCell className="text-slate-900">#{lead.ID}</TableCell>
+                  <TableCell className="font-medium text-slate-200">
+                    {lead.NAME || lead.TITLE?.split('—')[1]?.trim() || '-'}
+                  </TableCell>
+                  <TableCell className="text-slate-400">{lead.COMPANY_TITLE || '-'}</TableCell>
+                  <TableCell className="text-slate-200">
+                    {formatBudget(lead.OPPORTUNITY)}
+                  </TableCell>
+                  <TableCell>
+                    <span
+                      className={cn(
+                        'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border',
+                        status.className
+                      )}
+                    >
+                      <StatusIcon className="w-3.5 h-3.5" />
+                      {status.label}
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-slate-400 text-sm">{formatDate(lead.DATE_CREATE)}</TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-slate-400 hover:text-indigo-400 hover:bg-indigo-500/10"
+                      >
+                        <Eye className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-slate-400 hover:text-emerald-400 hover:bg-emerald-500/10"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </motion.tr>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </div>
+
+      {/* Empty state */}
+      {filteredLeads.length === 0 && (
+        <div className="text-center py-12">
+          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-slate-700/50 flex items-center justify-center">
+            <Search className="w-8 h-8 text-slate-500" />
+          </div>
+          <p className="text-slate-400">Лиды не найдены</p>
+          <p className="text-slate-500 text-sm mt-1">
+            Попробуйте изменить параметры поиска
+          </p>
+        </div>
+      )}
+    </motion.div>
   );
 }

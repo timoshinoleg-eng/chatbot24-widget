@@ -1,155 +1,79 @@
 "use client";
 
-import React from "react";
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-  Legend,
-} from "recharts";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { motion } from 'framer-motion';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 
-interface SentimentChartProps {
-  dailyStats: Array<{
-    date: string;
-    chats: number;
-    leads: number;
-    sentiment: number;
-  }>;
-  sentimentDistribution: {
-    POSITIVE: number;
-    NEGATIVE: number;
-    NEUTRAL: number;
-  };
-  scoreDistribution: {
-    HOT: number;
-    WARM: number;
-    COLD: number;
-  };
+interface SentimentData {
+  name: string;
+  value: number;
+  color: string;
 }
 
-const COLORS = {
-  positive: "#22c55e",
-  negative: "#ef4444",
-  neutral: "#9ca3af",
-  hot: "#ef4444",
-  warm: "#f59e0b",
-  cold: "#3b82f6",
+interface SentimentChartProps {
+  data: SentimentData[];
+}
+
+const CustomTooltip = ({ active, payload }: { active?: boolean; payload?: any[] }) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="bg-slate-800 border border-slate-700 rounded-lg p-3 shadow-lg">
+        <p className="text-slate-200 font-medium">{payload[0].name}</p>
+        <p className="text-slate-400 text-sm">
+          {payload[0].value}% ({payload[0].payload.count || payload[0].value})
+        </p>
+      </div>
+    );
+  }
+  return null;
 };
 
-export function SentimentChart({
-  dailyStats,
-  sentimentDistribution,
-  scoreDistribution,
-}: SentimentChartProps) {
-  const sentimentPieData = [
-    { name: "Позитивные", value: sentimentDistribution.POSITIVE, color: COLORS.positive },
-    { name: "Негативные", value: sentimentDistribution.NEGATIVE, color: COLORS.negative },
-    { name: "Нейтральные", value: sentimentDistribution.NEUTRAL, color: COLORS.neutral },
-  ];
-
-  const scorePieData = [
-    { name: "HOT", value: scoreDistribution.HOT, color: COLORS.hot },
-    { name: "WARM", value: scoreDistribution.WARM, color: COLORS.warm },
-    { name: "COLD", value: scoreDistribution.COLD, color: COLORS.cold },
-  ];
+export function SentimentChart({ data }: SentimentChartProps) {
+  const total = data.reduce((sum, item) => sum + item.value, 0);
 
   return (
-    <div className="grid gap-4 md:grid-cols-2">
-      {/* Daily Activity Chart */}
-      <Card className="md:col-span-2">
-        <CardHeader>
-          <CardTitle>Активность по дням</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={dailyStats}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="date" />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              <Line
-                type="monotone"
-                dataKey="chats"
-                name="Диалоги"
-                stroke="#3b82f6"
-                strokeWidth={2}
-              />
-              <Line
-                type="monotone"
-                dataKey="leads"
-                name="Лиды"
-                stroke="#22c55e"
-                strokeWidth={2}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </CardContent>
-      </Card>
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, delay: 0.3, ease: [0.4, 0, 0.2, 1] }}
+      className="bg-slate-800 border border-slate-700 rounded-xl p-6 shadow-card h-full"
+    >
+      <h3 className="text-lg font-semibold text-slate-50 mb-2">Распределение тональности</h3>
+      
+      <div className="h-[250px]">
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie
+              data={data}
+              cx="50%"
+              cy="50%"
+              innerRadius={60}
+              outerRadius={80}
+              paddingAngle={2}
+              dataKey="value"
+              animationBegin={400}
+              animationDuration={800}
+            >
+              {data.map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={entry.color} strokeWidth={0} />
+              ))}
+            </Pie>
+            <Tooltip content={<CustomTooltip />} />
+            <Legend 
+              verticalAlign="bottom" 
+              height={36}
+              formatter={(value: string) => (
+                <span className="text-slate-400 text-sm">{value}</span>
+              )}
+            />
+          </PieChart>
+        </ResponsiveContainer>
+      </div>
 
-      {/* Sentiment Distribution */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Распределение тональности</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ResponsiveContainer width="100%" height={250}>
-            <PieChart>
-              <Pie
-                data={sentimentPieData}
-                cx="50%"
-                cy="50%"
-                innerRadius={60}
-                outerRadius={80}
-                paddingAngle={5}
-                dataKey="value"
-              >
-                {sentimentPieData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.color} />
-                ))}
-              </Pie>
-              <Tooltip />
-              <Legend />
-            </PieChart>
-          </ResponsiveContainer>
-        </CardContent>
-      </Card>
-
-      {/* Score Distribution */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Распределение скоринга</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ResponsiveContainer width="100%" height={250}>
-            <PieChart>
-              <Pie
-                data={scorePieData}
-                cx="50%"
-                cy="50%"
-                innerRadius={60}
-                outerRadius={80}
-                paddingAngle={5}
-                dataKey="value"
-              >
-                {scorePieData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.color} />
-                ))}
-              </Pie>
-              <Tooltip />
-              <Legend />
-            </PieChart>
-          </ResponsiveContainer>
-        </CardContent>
-      </Card>
-    </div>
+      {/* Center label */}
+      <div className="text-center -mt-16 mb-4">
+        <span className="text-2xl font-bold text-slate-50">{total}</span>
+        <p className="text-xs text-slate-500">всего</p>
+      </div>
+    </motion.div>
   );
 }
