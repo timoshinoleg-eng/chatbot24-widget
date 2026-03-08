@@ -166,8 +166,20 @@ export async function restoreUserContext(userId: string): Promise<Partial<Stored
   if (!redis) {
     // Fallback to localStorage
     if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem(`chatbot24_context_${userId}`);
-      return stored ? JSON.parse(stored) : null;
+      try {
+        const stored = localStorage.getItem(`chatbot24_context_${userId}`);
+        if (!stored) return null;
+        // Handle corrupted data
+        if (stored === '[object Object]') {
+          localStorage.removeItem(`chatbot24_context_${userId}`);
+          return null;
+        }
+        return JSON.parse(stored);
+      } catch (error) {
+        console.error('[Personalization] Failed to parse context:', error);
+        localStorage.removeItem(`chatbot24_context_${userId}`);
+        return null;
+      }
     }
     return null;
   }
