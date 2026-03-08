@@ -78,6 +78,12 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     fetchData();
+  }, []);
+
+  useEffect(() => {
+    if (period) {
+      fetchData();
+    }
   }, [period]);
 
   // Keyboard shortcuts
@@ -185,6 +191,23 @@ export default function AdminDashboard() {
         <div className="flex items-center gap-3 text-slate-400">
           <RefreshCw className="h-6 w-6 animate-spin" />
           <span className="text-lg">Загрузка...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!data) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-slate-400 mb-4">Не удалось загрузить данные</p>
+          <Button 
+            onClick={fetchData} 
+            variant="outline"
+            className="border-slate-600 text-slate-300 hover:bg-slate-700"
+          >
+            Повторить попытку
+          </Button>
         </div>
       </div>
     );
