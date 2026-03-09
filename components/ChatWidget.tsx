@@ -79,6 +79,18 @@ export function ChatWidget() {
   const [quickButtons, setQuickButtons] = useState<Array<{ label: string; action: string }>>([]);
   const [sessionStartTime] = useState(Date.now());
   const [typingIndicator, setTypingIndicator] = useState(false);
+  
+  // Brief collection state
+  const [briefStep, setBriefStep] = useState<number | null>(null);
+  const [briefData, setBriefData] = useState<{
+    businessType?: string;
+    channels?: string[];
+    dailyRequests?: string;
+    botTasks?: string[];
+    referenceBots?: string;
+    budget?: string;
+    contacts?: { name?: string; phone?: string; email?: string };
+  }>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const userId = useRef<string>("");
@@ -261,6 +273,43 @@ export function ChatWidget() {
   const sendMessage = async (content: string) => {
     if (!content.trim() || isLoading) return;
 
+    // Handle brief step 7 (phone input)
+    if (briefStep === 7) {
+      const phone = content.trim();
+      const updatedBriefData = { ...briefData, contacts: { ...briefData.contacts, phone } };
+      
+      const userMessage: Message = {
+        id: `user_${Date.now()}`,
+        role: "user",
+        content: phone,
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, userMessage]);
+      setInput("");
+
+      // Complete brief and send to Bitrix24
+      setTimeout(async () => {
+        const botMessage: Message = {
+          id: `bot_${Date.now()}`,
+          role: "assistant",
+          content: `Спасибо! Бриф заполнен ✅\n\nМенеджер получит заявку и подготовит индивидуальное предложение. Ожидайте звонка в течение рабочего дня.`,
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, botMessage]);
+        setQuickButtons([
+          { label: "Новый вопрос", action: "chat" },
+          { label: "Завершить", action: "close" },
+        ]);
+        
+        // Reset brief state
+        setBriefStep(null);
+        
+        // Here you would call the API to send to Bitrix24
+        // await sendLeadToBitrix24(updatedBriefData);
+      }, 300);
+      return;
+    }
+
     const userMessage: Message = {
       id: `user_${Date.now()}`,
       role: "user",
@@ -382,6 +431,12 @@ export function ChatWidget() {
     };
     setMessages((prev) => [...prev, userMessage]);
 
+    // If we're in brief mode, handle brief step
+    if (briefStep !== null) {
+      handleBriefStep(action, label);
+      return;
+    }
+
     // Handle specific quick actions with predefined responses
     let botResponse = "";
     let newButtons: Array<{ label: string; action: string }> = [];
@@ -423,11 +478,16 @@ export function ChatWidget() {
         break;
 
       case "brief":
-        setShowLeadForm(true);
-        botResponse = "Отлично! Давайте соберём информацию для точного расчёта. Пожалуйста, заполните форму — это займёт всего 2 минуты.";
+        // Start brief collection process
+        setBriefStep(1);
+        botResponse = "Отлично! Давайте соберём информацию для точного расчёта.\n\nШаг 1 из 6: Какая у вас сфера бизнеса?";
         newButtons = [
-          { label: "Уже заполнял бриф", action: "chat" },
-          { label: "Есть вопрос", action: "chat" },
+          { label: "Магазин", action: "business_retail" },
+          { label: "Услуги", action: "business_services" },
+          { label: "Образование", action: "business_education" },
+          { label: "Медицина", action: "business_medical" },
+          { label: "Недвижимость", action: "business_realestate" },
+          { label: "Другое", action: "business_other" },
         ];
         break;
 
@@ -448,6 +508,120 @@ export function ChatWidget() {
       setMessages((prev) => [...prev, botMessage]);
       setQuickButtons(newButtons);
     }, 300);
+  };
+
+  // Handle brief step-by-step collection
+  const handleBriefStep = (action: string, label: string) => {
+    let botResponse = "";
+    let newButtons: Array<{ label: string; action: string }> = [];
+    let nextStep = briefStep;
+
+    switch (briefStep) {
+      case 1: // Business type
+        setBriefData((prev) => ({ ...prev, businessType: label }));
+        nextStep = 2;
+        botResponse = "Отлично! Шаг 2 из 6: Какие каналы связи используете? (можно выбрать несколько, нажимая по очереди)";
+        newButtons = [
+          { label: "Telegram", action: "channel_tg" },
+          { label: "WhatsApp", action: "channel_wa" },
+          { label: "Instagram", action: "channel_ig" },
+          { label: "MAx", action: "channel_max" },
+          { label: "Сайт", action: "channel_site" },
+          { label: "Готово", action: "channels_done" },
+        ];
+        break;
+
+      case 2: // Channels
+        if (action === "channels_done") {
+          nextStep = 3;
+          botResponse = "Понял! Шаг 3 из 6: Сколько заявок/сообщений получаете в день?";
+          newButtons = [
+            { label: "До 10", action: "requests_10" },
+            { label: "10-50", action: "requests_50" },
+            { label: "50-100", action: "requests_100" },
+            { label: "100+", action: "requests_more" },
+          ];
+        } else {
+          // Add channel to list
+          const channel = label;
+          setBriefData((prev) => ({
+            ...prev,
+            channels: [...(prev.channels || []), channel],
+          }));
+          return; // Don't send message yet, wait for more selections
+        }
+        break;
+
+      case 3: // Daily requests
+        setBriefData((prev) => ({ ...prev, dailyRequests: label }));
+        nextStep = 4;
+        botResponse = "Шаг 4 из 6: Какие задачи должен решать бот? (выберите все подходящие)";
+        newButtons = [
+          { label: "FAQ", action: "task_faq" },
+          { label: "Запись клиентов", action: "task_booking" },
+          { label: "Квалификация", action: "task_qualify" },
+          { label: "Прайсы", action: "task_pricing" },
+          { label: "CRM", action: "task_crm" },
+          { label: "Готово", action: "tasks_done" },
+        ];
+        break;
+
+      case 4: // Tasks
+        if (action === "tasks_done") {
+          nextStep = 5;
+          botResponse = "Шаг 5 из 6: Есть примеры ботов, которые вам нравятся?";
+          newButtons = [
+            { label: "Да, пришлю ссылку", action: "ref_yes" },
+            { label: "Нет", action: "ref_no" },
+            { label: "Есть свои идеи", action: "ref_ideas" },
+          ];
+        } else {
+          const task = label;
+          setBriefData((prev) => ({
+            ...prev,
+            botTasks: [...(prev.botTasks || []), task],
+          }));
+          return;
+        }
+        break;
+
+      case 5: // Reference bots
+        setBriefData((prev) => ({ ...prev, referenceBots: label }));
+        nextStep = 6;
+        botResponse = "Шаг 6 из 6: Какой примерный бюджет?";
+        newButtons = [
+          { label: "До 50 000 ₽", action: "budget_50k" },
+          { label: "50-100к", action: "budget_100k" },
+          { label: "100-200к", action: "budget_200k" },
+          { label: "200к+", action: "budget_more" },
+          { label: "Обсудить с менеджером", action: "budget_discuss" },
+        ];
+        break;
+
+      case 6: // Budget
+        setBriefData((prev) => ({ ...prev, budget: label }));
+        nextStep = 7;
+        botResponse = "Последний шаг: Оставьте телефон для связи. Менеджер свяжется с вами и подготовит индивидуальное предложение.";
+        // Clear buttons, use text input
+        newButtons = [];
+        break;
+    }
+
+    setBriefStep(nextStep);
+
+    // Add bot response
+    if (botResponse) {
+      setTimeout(() => {
+        const botMessage: Message = {
+          id: `bot_${Date.now()}`,
+          role: "assistant",
+          content: botResponse,
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, botMessage]);
+        setQuickButtons(newButtons);
+      }, 300);
+    }
   };
 
   const handleLeadSubmit = (leadData: any) => {
