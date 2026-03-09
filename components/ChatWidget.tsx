@@ -825,14 +825,21 @@ export function ChatWidget() {
           </div>
 
           {/* Quick Buttons */}
-          {quickButtons.length > 0 && !isLoading && (
-            <QuickButtonsContainer>
-              <QuickButtons 
-                buttons={quickButtons} 
-                onButtonClick={handleQuickButtonClick}
-                variant="compact"
-              />
-            </QuickButtonsContainer>
+          {quickButtons.length > 0 && (
+            <div className="border-t border-gray-100 bg-gray-50 px-4 py-3">
+              <p className="mb-2 text-xs text-gray-500">Быстрые вопросы:</p>
+              <div className="flex flex-wrap gap-2">
+                {quickButtons.map((button, index) => (
+                  <button
+                    key={`${button.action}-${index}`}
+                    onClick={() => handleQuickButtonClick(button.action, button.label)}
+                    className="rounded-lg px-3 py-2 text-xs font-medium bg-white text-gray-700 border border-gray-200 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 shadow-sm transition-all"
+                  >
+                    {button.label}
+                  </button>
+                ))}
+              </div>
+            </div>
           )}
 
           {/* Input */}
