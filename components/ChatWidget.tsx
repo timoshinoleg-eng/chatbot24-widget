@@ -98,9 +98,13 @@ export function ChatWidget() {
     const pContext = extractPageContext();
     setPageContext(pContext);
 
-    // Get quick buttons for current page
-    const buttons = getQuickButtonsForPage(pContext.path);
-    setQuickButtons(buttons);
+    // Set default quick buttons for chatbot consultation
+    setQuickButtons([
+      { label: "Сколько стоит чат-бот?", action: "price" },
+      { label: "Сроки разработки", action: "timeline" },
+      { label: "Примеры проектов", action: "portfolio" },
+      { label: "Бесплатная консультация", action: "consultation" },
+    ]);
 
     // Initialize trigger state
     initTriggerState(sessionId.current);
@@ -579,7 +583,7 @@ export function ChatWidget() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 placeholder="Введите сообщение..."
-                className="flex-1"
+                className="flex-1 text-gray-900 bg-white border-gray-300"
                 disabled={isLoading}
               />
               <Button
