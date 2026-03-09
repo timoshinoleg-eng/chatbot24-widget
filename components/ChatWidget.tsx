@@ -373,7 +373,81 @@ export function ChatWidget() {
   };
 
   const handleQuickButtonClick = (action: string, label: string) => {
-    sendMessage(label);
+    // Add user message
+    const userMessage: Message = {
+      id: `user_${Date.now()}`,
+      role: "user",
+      content: label,
+      timestamp: new Date(),
+    };
+    setMessages((prev) => [...prev, userMessage]);
+
+    // Handle specific quick actions with predefined responses
+    let botResponse = "";
+    let newButtons: Array<{ label: string; action: string }> = [];
+
+    switch (action) {
+      case "price":
+        botResponse = "Стоимость чат-бота зависит от количества каналов, сложности сценариев и интеграций:\n\n• MVP-бот (1 канал): от 49 000 ₽\n• Бизнес-бот (2-3 канала + CRM): от 89 000 ₽\n• Корпоративный (все каналы + AI): от 149 000 ₽\n\nТочный расчёт возможен только после заполнения брифа — менеджер проанализирует задачу и подготовит индивидуальное предложение.";
+        newButtons = [
+          { label: "Заполнить бриф", action: "brief" },
+          { label: "Примеры проектов", action: "portfolio" },
+          { label: "Сроки разработки", action: "timeline" },
+        ];
+        break;
+
+      case "timeline":
+        botResponse = "Сроки разработки чат-бота:\n\n• MVP-бот: 1-2 недели\n• Бизнес-бот: 2-3 недели\n• Корпоративный: 3-4 недели\n\nТочные сроки зависят от:\n• Количества каналов связи\n• Сложности сценариев диалога\n• Необходимых интеграций (CRM, платёжные системы)\n• Согласования макетов и тестирования";
+        newButtons = [
+          { label: "Сколько стоит?", action: "price" },
+          { label: "Примеры проектов", action: "portfolio" },
+          { label: "Заполнить бриф", action: "brief" },
+        ];
+        break;
+
+      case "portfolio":
+        botResponse = "У нас есть опыт в разных сферах:\n\n🏪 Ритейл: магазины одежды, цветочные, мебель\n💇 Услуги: салоны красоты, автосервисы, клининг\n📚 Образование: онлайн-школы, детские центры\n🏥 Медицина: стоматологии, медицинские центры\n🏠 Недвижимость: агентства, застройщики\n\nКаждый проект индивидуален — расскажите о вашей задаче, и я подберу релевантные кейсы.";
+        newButtons = [
+          { label: "Рассказать о задаче", action: "brief" },
+          { label: "Сколько стоит?", action: "price" },
+          { label: "Сроки", action: "timeline" },
+        ];
+        break;
+
+      case "consultation":
+        botResponse = "Конечно! Проведу бесплатную консультацию. Чтобы подготовить полезную информацию, расскажите:\n\n1. Какая у вас сфера бизнеса?\n2. Какие каналы связи используете (Telegram, WhatsApp, Instagram, MAx)?\n3. Сколько заявок/сообщений получаете в день?\n\nИли сразу заполните бриф — это займёт 2 минуты.";
+        newButtons = [
+          { label: "Заполнить бриф", action: "brief" },
+          { label: "Сначала расскажу о задаче", action: "chat" },
+        ];
+        break;
+
+      case "brief":
+        setShowLeadForm(true);
+        botResponse = "Отлично! Давайте соберём информацию для точного расчёта. Пожалуйста, заполните форму — это займёт всего 2 минуты.";
+        newButtons = [
+          { label: "Уже заполнял бриф", action: "chat" },
+          { label: "Есть вопрос", action: "chat" },
+        ];
+        break;
+
+      default:
+        // For unknown actions, send to API
+        sendMessage(label);
+        return;
+    }
+
+    // Add bot response
+    setTimeout(() => {
+      const botMessage: Message = {
+        id: `bot_${Date.now()}`,
+        role: "assistant",
+        content: botResponse,
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, botMessage]);
+      setQuickButtons(newButtons);
+    }, 300);
   };
 
   const handleLeadSubmit = (leadData: any) => {
