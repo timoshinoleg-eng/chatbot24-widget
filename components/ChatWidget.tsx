@@ -491,6 +491,20 @@ export function ChatWidget() {
         ];
         break;
 
+      case "close":
+        setIsOpen(false);
+        return;
+
+      case "chat":
+        botResponse = "Чем могу помочь? Задавайте вопрос — расскажу о чат-ботах, интеграциях, сроках и стоимости.";
+        newButtons = [
+          { label: "Сколько стоит чат-бот?", action: "price" },
+          { label: "Сроки разработки", action: "timeline" },
+          { label: "Примеры проектов", action: "portfolio" },
+          { label: "Бесплатная консультация", action: "consultation" },
+        ];
+        break;
+
       default:
         // For unknown actions, send to API
         sendMessage(label);
